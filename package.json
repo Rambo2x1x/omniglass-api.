@@ -1,0 +1,10 @@
+{
+  "name": "omniscrape-monorepo",
+  "version": "1.0.0",
+  "description": "OmniScrape API Backend Repository",
+  "scripts": {
+    "dev": "npm run dev --prefix backend",
+    "build": "npm run build --prefix backend",
+    "start": "npm start --prefix backend"
+  }
+}
