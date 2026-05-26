@@ -4,7 +4,7 @@
   "description": "OmniScrape API Backend Repository",
   "scripts": {
     "dev": "npm run dev --prefix backend",
-    "build": "npm run build --prefix backend",
+    "build": "npm install --prefix backend && npm run build --prefix backend",
     "start": "npm start --prefix backend"
   }
 }
