@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node src/server.ts",
-    "build": "tsc",
+    "build": "npx puppeteer browsers install chrome && tsc",
     "start": "node dist/server.js"
   },
   "dependencies": {
