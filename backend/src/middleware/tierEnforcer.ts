@@ -42,6 +42,15 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       return;
     }
 
+    // 3.5. Block Raw HTML Scraper
+    if (path.startsWith('/v1/scrape/raw')) {
+      res.status(403).json({
+        error: 'Feature Locked',
+        message: 'Raw HTML source code scraping is a premium feature. Please upgrade to the PRO plan to bypass bot blocks and fetch raw source HTML.'
+      });
+      return;
+    }
+
     // 4. Block CSS Selector Extraction in /v1/scrape
     const selector = req.query.selector || req.body?.selector;
     if (selector) {

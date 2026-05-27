@@ -13,6 +13,11 @@ import {
   scrapeLinks,
   scrapeTables,
   takeElementScreenshot,
+  scrapeRawHtml,
+  scrapeMetadataOnly,
+  scrapeGoogleNews,
+  scrapeAutocomplete,
+  auditDomainStatus,
   ScrapeOptions,
   ScreenshotOptions,
   PdfOptions
@@ -367,6 +372,151 @@ app.get('/v1/screenshot/element', requireRapidApiSecret, async (req: Request, re
   } catch (error: any) {
     console.error('Element screenshot error:', error);
     res.status(500).json({ error: 'Element Screenshot Failed', message: error.message });
+  }
+});
+
+// 10. Raw HTML Scraper
+app.get('/v1/scrape/raw', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const html = await scrapeRawHtml(url, options);
+    res.set('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('Raw HTML scrape error:', error);
+    res.status(500).json({ error: 'Raw HTML Scraping Failed', message: error.message });
+  }
+});
+
+app.post('/v1/scrape/raw', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const { url } = req.body;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL in body.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const html = await scrapeRawHtml(url, options);
+    res.set('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error: any) {
+    console.error('Raw HTML scrape error:', error);
+    res.status(500).json({ error: 'Raw HTML Scraping Failed', message: error.message });
+  }
+});
+
+// 11. SEO & Metadata Extractor
+app.get('/v1/scrape/metadata', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeMetadataOnly(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Metadata scrape error:', error);
+    res.status(500).json({ error: 'Metadata Extraction Failed', message: error.message });
+  }
+});
+
+app.post('/v1/scrape/metadata', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const { url } = req.body;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL in body.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeMetadataOnly(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Metadata scrape error:', error);
+    res.status(500).json({ error: 'Metadata Extraction Failed', message: error.message });
+  }
+});
+
+// 12. Google News Search
+app.get('/v1/search/news', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.query.q || req.query.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing q or query parameter.' });
+    return;
+  }
+
+  const numVal = req.query.num;
+  const numResults = numVal ? Math.min(50, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleNews(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('News search error:', error);
+    res.status(500).json({ error: 'News Search Failed', message: error.message });
+  }
+});
+
+app.post('/v1/search/news', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.body.q || req.body.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Provide q or query in the request body.' });
+    return;
+  }
+
+  const numVal = req.body.num;
+  const numResults = numVal ? Math.min(50, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleNews(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('News search error:', error);
+    res.status(500).json({ error: 'News Search Failed', message: error.message });
+  }
+});
+
+// 13. Keyword Autocomplete suggestions
+app.get('/v1/search/suggest', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.query.q || req.query.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing q or query parameter.' });
+    return;
+  }
+
+  try {
+    const suggestions = await scrapeAutocomplete(query);
+    res.json({ query, suggestions });
+  } catch (error: any) {
+    console.error('Autocomplete error:', error);
+    res.status(500).json({ error: 'Keyword Suggestion Failed', message: error.message });
+  }
+});
+
+// 14. Website Status & SSL Auditor
+app.get('/v1/scrape/status', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const data = await auditDomainStatus(url);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Domain status audit error:', error);
+    res.status(500).json({ error: 'Status Audit Failed', message: error.message });
   }
 });
 

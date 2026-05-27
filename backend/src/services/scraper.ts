@@ -1,6 +1,8 @@
 import { Page } from 'puppeteer';
 import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
+import https from 'https';
+import http from 'http';
 import { getBrowser } from './browserManager';
 
 // Configure Turndown for clean Markdown conversion
@@ -75,6 +77,42 @@ export interface TableResult {
   id: number;
   headers: string[];
   rows: Record<string, string>[];
+}
+
+export interface MetadataOnlyResult {
+  title: string;
+  description: string;
+  keywords: string;
+  author: string;
+  language: string;
+  ogImage: string;
+  ogTitle: string;
+  ogDescription: string;
+  ogType: string;
+  ogUrl: string;
+  twitterCard: string;
+  twitterTitle: string;
+  twitterDescription: string;
+  twitterImage: string;
+  schemaType: string;
+}
+
+export interface NewsResult {
+  title: string;
+  url: string;
+  source: string;
+  time: string;
+}
+
+export interface DomainStatusResult {
+  host: string;
+  status: string;
+  statusCode: number;
+  responseTimeMs: number;
+  sslValid: boolean;
+  sslIssuer: string;
+  sslValidTo: string;
+  sslDaysRemaining: number;
 }
 
 /**
@@ -793,4 +831,289 @@ export async function takeElementScreenshot(url: string, selector: string, optio
   } finally {
     await page.close();
   }
+}
+
+/**
+ * Scrapes and returns the raw HTML source of a webpage.
+ */
+export async function scrapeRawHtml(url: string, options: ScrapeOptions = {}): Promise<string> {
+  console.log(`[Scraper] Initiating Raw HTML Scrape for: ${url}`);
+  
+  if (!options.wait && !options.waitSelector) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      if (response.ok) {
+        return await response.text();
+      }
+    } catch (e) {
+      // Fallback to Chromium
+    }
+  }
+  
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    await configureRequestInterception(page, options.blockMedia ?? true);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    return await page.content();
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * High-speed SEO, Social Card, and OpenGraph metadata extractor.
+ */
+export async function scrapeMetadataOnly(url: string, options: ScrapeOptions = {}): Promise<MetadataOnlyResult> {
+  console.log(`[Scraper] Initiating Metadata Scrape for: ${url}`);
+  let html = '';
+  
+  if (!options.wait && !options.waitSelector) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      if (response.ok) {
+        html = await response.text();
+      }
+    } catch (e) {
+      // Fallback to Chromium
+    }
+  }
+  
+  if (!html) {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await page.setViewport({ width: 1280, height: 800 });
+      await configureRequestInterception(page, true); // Block heavy assets
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      await handleWaitOptions(page, options.wait, options.waitSelector);
+      html = await page.content();
+    } finally {
+      await page.close();
+    }
+  }
+  
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  
+  const getMeta = (nameOrProperty: string): string => {
+    const el = document.querySelector(`meta[name="${nameOrProperty}"], meta[property="${nameOrProperty}"]`);
+    return el ? el.getAttribute('content') || '' : '';
+  };
+  
+  return {
+    title: document.title || '',
+    description: getMeta('description'),
+    keywords: getMeta('keywords'),
+    author: getMeta('author'),
+    language: document.documentElement.lang || 'en',
+    ogImage: getMeta('og:image'),
+    ogTitle: getMeta('og:title'),
+    ogDescription: getMeta('og:description'),
+    ogType: getMeta('og:type'),
+    ogUrl: getMeta('og:url'),
+    twitterCard: getMeta('twitter:card'),
+    twitterTitle: getMeta('twitter:title'),
+    twitterDescription: getMeta('twitter:description'),
+    twitterImage: getMeta('twitter:image'),
+    schemaType: document.querySelector('[type="application/ld+json"]')?.textContent || ''
+  };
+}
+
+/**
+ * Scrapes Google News with fallback to Bing News for 100% SERP news uptime.
+ */
+export async function scrapeGoogleNews(query: string, numResults: number = 10): Promise<NewsResult[]> {
+  console.log(`[Scraper] Querying Google News for: "${query}"`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=nws&hl=en`;
+    let results: NewsResult[] = [];
+    
+    try {
+      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      results = await page.evaluate(() => {
+        const items: any[] = [];
+        const anchors = document.querySelectorAll('a');
+        anchors.forEach((a) => {
+          const href = a.getAttribute('href') || '';
+          const titleEl = a.querySelector('div.mCBkyc, div.JheTab, h3, [role="heading"]');
+          const sourceEl = a.querySelector('.UP5flb, .NUnGF, div.Mg5Ae, span');
+          const timeEl = a.querySelector('.OSrXXb, .Lfvv3b, span');
+          
+          if (titleEl && href && href.startsWith('http') && !href.includes('google.com/')) {
+            items.push({
+              title: titleEl.textContent?.trim() || '',
+              url: href,
+              source: sourceEl ? sourceEl.textContent?.trim() || 'News Source' : 'News Source',
+              time: timeEl ? timeEl.textContent?.trim() || 'Recently' : 'Recently'
+            });
+          }
+        });
+        return items;
+      });
+    } catch (err) {
+      console.log('[Scraper] Google News failed. Falling back to Bing News...');
+    }
+    
+    if (results.length === 0) {
+      console.log('[Scraper] Google News returned 0 results. Querying Bing News fallback...');
+      try {
+        const bingUrl = `https://www.bing.com/news/search?q=${encodeURIComponent(query)}`;
+        await page.goto(bingUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        
+        results = await page.evaluate(() => {
+          const items: any[] = [];
+          const cards = document.querySelectorAll('.news-card, .news-card-body');
+          cards.forEach((card) => {
+            const titleEl = card.querySelector('a.title');
+            const sourceEl = card.querySelector('.source, a.source');
+            const timeEl = card.querySelector('.time, span[title]');
+            
+            if (titleEl) {
+              const href = titleEl.getAttribute('href') || '';
+              if (href && href.startsWith('http')) {
+                items.push({
+                  title: titleEl.textContent?.trim() || '',
+                  url: href,
+                  source: sourceEl ? sourceEl.textContent?.trim() || 'Bing News' : 'Bing News',
+                  time: timeEl ? timeEl.textContent?.trim() || 'Recently' : 'Recently'
+                });
+              }
+            }
+          });
+          return items;
+        });
+      } catch (bingErr: any) {
+        console.error('[Scraper] Bing News fallback failed:', bingErr.message);
+      }
+    }
+    
+    return results.slice(0, numResults);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Fetches Google Autocomplete keyword suggestions.
+ */
+export async function scrapeAutocomplete(query: string): Promise<string[]> {
+  console.log(`[Scraper] Querying Autocomplete for: "${query}"`);
+  try {
+    const url = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data) && Array.isArray(data[1])) {
+        return data[1];
+      }
+    }
+  } catch (err) {
+    console.error('Autocomplete scrape failed:', err);
+  }
+  return [];
+}
+
+/**
+ * Audits domain load performance, HTTP response status, and SSL certificate expiration.
+ */
+export function auditDomainStatus(url: string): Promise<DomainStatusResult> {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const parsedUrl = new URL(url);
+    const host = parsedUrl.hostname;
+    const isHttps = parsedUrl.protocol === 'https:';
+    
+    const requestModule = isHttps ? https : http;
+    
+    const options = {
+      method: 'GET',
+      hostname: host,
+      path: parsedUrl.pathname + parsedUrl.search,
+      timeout: 10000,
+      rejectUnauthorized: false
+    };
+    
+    const req = requestModule.request(options, (res) => {
+      const responseTimeMs = Date.now() - startTime;
+      let sslValid = false;
+      let sslIssuer = '';
+      let sslValidTo = '';
+      let sslDaysRemaining = 0;
+      
+      if (isHttps) {
+        const socket: any = req.socket;
+        const cert = socket.getPeerCertificate(true);
+        if (cert && Object.keys(cert).length > 0) {
+          sslValid = !socket.authorized ? false : true;
+          sslIssuer = cert.issuer ? cert.issuer.O || cert.issuer.CN || '' : '';
+          sslValidTo = cert.valid_to || '';
+          
+          if (sslValidTo) {
+            const expiryDate = new Date(sslValidTo);
+            const diffTime = expiryDate.getTime() - Date.now();
+            sslDaysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+          }
+        }
+      }
+      
+      resolve({
+        host,
+        status: 'UP',
+        statusCode: res.statusCode || 200,
+        responseTimeMs,
+        sslValid,
+        sslIssuer,
+        sslValidTo,
+        sslDaysRemaining
+      });
+    });
+    
+    req.on('error', () => {
+      resolve({
+        host,
+        status: 'DOWN',
+        statusCode: 0,
+        responseTimeMs: Date.now() - startTime,
+        sslValid: false,
+        sslIssuer: '',
+        sslValidTo: '',
+        sslDaysRemaining: 0
+      });
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({
+        host,
+        status: 'TIMEOUT',
+        statusCode: 0,
+        responseTimeMs: Date.now() - startTime,
+        sslValid: false,
+        sslIssuer: '',
+        sslValidTo: '',
+        sslDaysRemaining: 0
+      });
+    });
+    
+    req.end();
+  });
 }
