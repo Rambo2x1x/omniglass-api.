@@ -303,41 +303,78 @@ export async function convertToPdf(urlOrHtml: string, isHtml: boolean, options: 
  * Scrapes Google Search Results Page (SERP) and returns structured JSON results.
  */
 export async function scrapeGoogleSearch(query: string, numResults: number = 10): Promise<SearchResult[]> {
-  console.log(`[Scraper] Querying Google SERP for: "${query}"`);
+  console.log(`[Scraper] Querying Search Engine for: "${query}"`);
   const browser = await getBrowser();
   const page = await browser.newPage();
 
   try {
     await page.setViewport({ width: 1280, height: 800 });
     
-    // We do NOT block stylesheets/scripts for Google Search to avoid malformed DOM elements
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${numResults}`;
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    const results = await page.evaluate(() => {
-      const items: any[] = [];
-      const elements = document.querySelectorAll('div.g');
-      
-      elements.forEach((el) => {
-        const titleEl = el.querySelector('h3');
-        const linkEl = el.querySelector('a');
-        const snippetEl = el.querySelector('div.VwiC3b, div.yDqRNd, span.aCOpRe');
-
-        if (titleEl && linkEl) {
-          const title = titleEl.textContent || '';
-          const url = linkEl.getAttribute('href') || '';
-          const snippet = snippetEl ? snippetEl.textContent || '' : '';
-          
-          if (url && url.startsWith('http') && !url.includes('google.com/')) {
-            items.push({ title, url, snippet });
+    // Try Google first with host language set to English
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en&num=${numResults}`;
+    let results: SearchResult[] = [];
+    
+    try {
+      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      results = await page.evaluate(() => {
+        const items: any[] = [];
+        // Extract links where an h3 title exists inside or next to an anchor tag
+        const anchors = document.querySelectorAll('a');
+        anchors.forEach((a) => {
+          const h3 = a.querySelector('h3');
+          const href = a.getAttribute('href');
+          if (h3 && href && href.startsWith('http') && !href.includes('google.com/')) {
+            // Traverse up slightly to search for a snippet
+            let parent = a.parentElement;
+            let snippet = '';
+            for (let i = 0; i < 5; i++) {
+              if (!parent) break;
+              const snippetEl = parent.querySelector('div.VwiC3b, div.yDqRNd, span.aCOpRe');
+              if (snippetEl) {
+                snippet = snippetEl.textContent || '';
+                break;
+              }
+              parent = parent.parentElement;
+            }
+            items.push({
+              title: h3.textContent || '',
+              url: href,
+              snippet
+            });
           }
-        }
+        });
+        return items;
       });
+    } catch (googleErr) {
+      console.log('[Scraper] Google request failed or timed out. Falling back to DuckDuckGo...');
+    }
 
-      return items;
-    });
+    // If Google blocked us, returned 0 results, or showed redirect consent page:
+    if (results.length === 0) {
+      console.log('[Scraper] Google returned 0 results (possibly blocked/captcha). Falling back to DuckDuckGo...');
+      const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      await page.goto(ddgUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      
+      results = await page.evaluate(() => {
+        const items: any[] = [];
+        const elements = document.querySelectorAll('div.result');
+        elements.forEach((el) => {
+          const titleEl = el.querySelector('h2.result__title a');
+          const snippetEl = el.querySelector('a.result__snippet, div.result__snippet');
+          if (titleEl) {
+            const title = titleEl.textContent?.trim() || '';
+            const url = titleEl.getAttribute('href') || '';
+            const snippet = snippetEl ? snippetEl.textContent?.trim() || '' : '';
+            if (url && url.startsWith('http')) {
+              items.push({ title, url, snippet });
+            }
+          }
+        });
+        return items;
+      });
+    }
 
-    console.log(`[Scraper] Google search complete. Retained ${results.length} organic links.`);
+    console.log(`[Scraper] Search complete. Retained ${results.length} organic links.`);
     return results.slice(0, numResults);
   } finally {
     await page.close();
