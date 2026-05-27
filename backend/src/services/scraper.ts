@@ -365,12 +365,28 @@ export async function scrapeGoogleSearch(query: string, numResults: number = 10)
             const title = titleEl.textContent?.trim() || '';
             const url = titleEl.getAttribute('href') || '';
             const snippet = snippetEl ? snippetEl.textContent?.trim() || '' : '';
-            if (url && url.startsWith('http')) {
+            if (url && (url.startsWith('http') || url.startsWith('//'))) {
               items.push({ title, url, snippet });
             }
           }
         });
         return items;
+      });
+
+      // Clean up protocol-relative URLs and decode DuckDuckGo redirect parameters
+      results = results.map(item => {
+        let cleanUrl = item.url;
+        if (cleanUrl.startsWith('//')) {
+          cleanUrl = 'https:' + cleanUrl;
+        }
+        if (cleanUrl.includes('duckduckgo.com/l/?uddg=')) {
+          const parts = cleanUrl.split('uddg=');
+          if (parts.length > 1) {
+            const rawUrl = parts[1].split('&')[0];
+            cleanUrl = decodeURIComponent(rawUrl);
+          }
+        }
+        return { ...item, url: cleanUrl };
       });
     }
 
