@@ -66,17 +66,18 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       }
     }
 
-    // 6. Restrict Search results count
-    if (req.query.num) {
-      const numVal = parseInt(req.query.num as string, 10);
-      if (numVal > 3) {
+    // 6. Restrict Search results count (always enforce limit on search endpoints)
+    if (path.startsWith('/v1/search')) {
+      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
+      if (numValQuery > 3) {
         req.query.num = '3';
       }
-    }
-    if (req.body && req.body.num) {
-      const numVal = parseInt(req.body.num, 10);
-      if (numVal > 3) {
-        req.body.num = 3;
+      
+      if (req.body) {
+        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
+        if (numValBody > 3) {
+          req.body.num = 3;
+        }
       }
     }
   }
@@ -108,17 +109,18 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       }
     }
 
-    // 3. Restrict Search results count (max 10)
-    if (req.query.num) {
-      const numVal = parseInt(req.query.num as string, 10);
-      if (numVal > 10) {
+    // 3. Restrict Search results count (always enforce limit on search endpoints)
+    if (path.startsWith('/v1/search')) {
+      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
+      if (numValQuery > 10) {
         req.query.num = '10';
       }
-    }
-    if (req.body && req.body.num) {
-      const numVal = parseInt(req.body.num, 10);
-      if (numVal > 10) {
-        req.body.num = 10;
+      
+      if (req.body) {
+        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
+        if (numValBody > 10) {
+          req.body.num = 10;
+        }
       }
     }
   }
@@ -141,17 +143,18 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       }
     }
 
-    // Restrict Search results count to max 50
-    if (req.query.num) {
-      const numVal = parseInt(req.query.num as string, 10);
-      if (numVal > 50) {
+    // Restrict Search results count to max 50 (always enforce limit on search endpoints)
+    if (path.startsWith('/v1/search')) {
+      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
+      if (numValQuery > 50) {
         req.query.num = '50';
       }
-    }
-    if (req.body && req.body.num) {
-      const numVal = parseInt(req.body.num, 10);
-      if (numVal > 50) {
-        req.body.num = 50;
+      
+      if (req.body) {
+        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
+        if (numValBody > 50) {
+          req.body.num = 50;
+        }
       }
     }
   }
