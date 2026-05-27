@@ -2,7 +2,15 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { requireRapidApiSecret } from './middleware/auth';
-import { scrapeToMarkdown, takeScreenshot, convertToPdf } from './services/scraper';
+import { 
+  scrapeToMarkdown, 
+  takeScreenshot, 
+  convertToPdf, 
+  scrapeGoogleSearch,
+  ScrapeOptions,
+  ScreenshotOptions,
+  PdfOptions
+} from './services/scraper';
 
 dotenv.config();
 
@@ -12,11 +20,39 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// ==========================================
-// PUBLIC B2B ENDPOINTS (Routed via RapidAPI)
-// ==========================================
+// Helper to parse common query/body options
+function parseScrapeOptions(req: Request): ScrapeOptions {
+  const options: ScrapeOptions = {};
+  
+  // Parse wait timeout (in ms)
+  const waitVal = req.query.wait || req.body?.wait;
+  if (waitVal) {
+    const parsed = parseInt(waitVal as string, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      options.wait = parsed;
+    }
+  }
 
-// 1. Scrape to Markdown
+  // Parse wait selector
+  const waitSelectorVal = req.query.waitSelector || req.body?.waitSelector;
+  if (waitSelectorVal) {
+    options.waitSelector = waitSelectorVal as string;
+  }
+
+  // Parse block media (images, styles, media, fonts)
+  const blockMediaVal = req.query.blockMedia || req.body?.blockMedia;
+  if (blockMediaVal !== undefined) {
+    options.blockMedia = blockMediaVal === 'true' || blockMediaVal === true;
+  }
+
+  return options;
+}
+
+// ==========================================================
+// PUBLIC B2B ENDPOINTS (Routed via RapidAPI)
+// ==========================================================
+
+// 1. Scrape Website to Markdown
 app.get('/v1/scrape', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
   const url = req.query.url as string;
   if (!url) {
@@ -25,7 +61,8 @@ app.get('/v1/scrape', requireRapidApiSecret, async (req: Request, res: Response)
   }
 
   try {
-    const data = await scrapeToMarkdown(url);
+    const options = parseScrapeOptions(req);
+    const data = await scrapeToMarkdown(url, options);
     res.json(data);
   } catch (error: any) {
     console.error('Error scraping:', error);
@@ -41,7 +78,8 @@ app.post('/v1/scrape', requireRapidApiSecret, async (req: Request, res: Response
   }
 
   try {
-    const data = await scrapeToMarkdown(url);
+    const options = parseScrapeOptions(req);
+    const data = await scrapeToMarkdown(url, options);
     res.json(data);
   } catch (error: any) {
     console.error('Error scraping:', error);
@@ -49,7 +87,7 @@ app.post('/v1/scrape', requireRapidApiSecret, async (req: Request, res: Response
   }
 });
 
-// 2. Capture Screenshot
+// 2. Capture Screenshot (PNG image format)
 app.get('/v1/screenshot', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
   const url = req.query.url as string;
   if (!url) {
@@ -58,7 +96,15 @@ app.get('/v1/screenshot', requireRapidApiSecret, async (req: Request, res: Respo
   }
 
   try {
-    const imageBuffer = await takeScreenshot(url);
+    const baseOptions = parseScrapeOptions(req);
+    const screenshotOptions: ScreenshotOptions = { ...baseOptions };
+
+    const fullPageVal = req.query.fullPage;
+    if (fullPageVal !== undefined) {
+      screenshotOptions.fullPage = fullPageVal === 'true';
+    }
+
+    const imageBuffer = await takeScreenshot(url, screenshotOptions);
     res.set('Content-Type', 'image/png');
     res.send(imageBuffer);
   } catch (error: any) {
@@ -67,7 +113,7 @@ app.get('/v1/screenshot', requireRapidApiSecret, async (req: Request, res: Respo
   }
 });
 
-// 3. Print PDF
+// 3. Print PDF Document
 app.get('/v1/pdf', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
   const url = req.query.url as string;
   if (!url) {
@@ -76,7 +122,8 @@ app.get('/v1/pdf', requireRapidApiSecret, async (req: Request, res: Response): P
   }
 
   try {
-    const pdfBuffer = await convertToPdf(url, false);
+    const options = parseScrapeOptions(req);
+    const pdfBuffer = await convertToPdf(url, false, options);
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', 'attachment; filename="scrape.pdf"');
     res.send(pdfBuffer);
@@ -94,15 +141,55 @@ app.post('/v1/pdf', requireRapidApiSecret, async (req: Request, res: Response): 
   }
 
   try {
+    const options = parseScrapeOptions(req);
     const pdfBuffer = html
-      ? await convertToPdf(html, true)
-      : await convertToPdf(url, false);
+      ? await convertToPdf(html, true, options)
+      : await convertToPdf(url, false, options);
 
     res.set('Content-Type', 'application/pdf');
     res.send(pdfBuffer);
   } catch (error: any) {
     console.error('PDF error:', error);
     res.status(500).json({ error: 'PDF Generation Failed', message: error.message });
+  }
+});
+
+// 4. Google SERP (Search Engine Results Page) Scraper
+app.get('/v1/search', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.query.q || req.query.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing q or query parameter.' });
+    return;
+  }
+
+  const numVal = req.query.num;
+  const numResults = numVal ? Math.min(20, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleSearch(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Search Failed', message: error.message });
+  }
+});
+
+app.post('/v1/search', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.body.q || req.body.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Provide q or query in the request body.' });
+    return;
+  }
+
+  const numVal = req.body.num;
+  const numResults = numVal ? Math.min(20, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleSearch(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('Search error:', error);
+    res.status(500).json({ error: 'Search Failed', message: error.message });
   }
 });
 

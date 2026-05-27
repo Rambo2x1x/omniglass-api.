@@ -1,4 +1,9 @@
-import puppeteer, { Browser } from 'puppeteer';
+import puppeteerExtra from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { Browser } from 'puppeteer';
+
+// Register the stealth plugin
+puppeteerExtra.use(StealthPlugin());
 
 let browserInstance: Browser | null = null;
 let isInitializing = false;
@@ -15,10 +20,10 @@ export async function getBrowser(): Promise<Browser> {
   }
 
   isInitializing = true;
-  console.log('[BrowserManager] Launching shared Chromium instance...');
+  console.log('[BrowserManager] Launching shared Chromium instance with Stealth Plugin...');
 
   try {
-    browserInstance = await puppeteer.launch({
+    browserInstance = await puppeteerExtra.launch({
       headless: true,
       args: [
         '--no-sandbox',
