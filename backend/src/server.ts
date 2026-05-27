@@ -2,12 +2,17 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { requireRapidApiSecret } from './middleware/auth';
+import { enforceTierLimits } from './middleware/tierEnforcer';
 import { 
   scrapeToMarkdown, 
   takeScreenshot, 
   convertToPdf, 
   scrapeGoogleSearch,
   scrapeGoogleImages,
+  scrapeEmailsAndSocials,
+  scrapeLinks,
+  scrapeTables,
+  takeElementScreenshot,
   ScrapeOptions,
   ScreenshotOptions,
   PdfOptions
@@ -20,6 +25,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use(enforceTierLimits);
 
 // Helper to parse common query/body options
 function parseScrapeOptions(req: Request): ScrapeOptions {
@@ -236,6 +242,131 @@ app.post('/v1/search/images', requireRapidApiSecret, async (req: Request, res: R
   } catch (error: any) {
     console.error('Image search error:', error);
     res.status(500).json({ error: 'Image Search Failed', message: error.message });
+  }
+});
+
+// 6. Advanced Link Extractor
+app.get('/v1/scrape/links', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeLinks(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping links:', error);
+    res.status(500).json({ error: 'Link Extraction Failed', message: error.message });
+  }
+});
+
+app.post('/v1/scrape/links', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const { url } = req.body;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL in body.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeLinks(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping links:', error);
+    res.status(500).json({ error: 'Link Extraction Failed', message: error.message });
+  }
+});
+
+// 7. Lead Generation / Contact Extractor
+app.get('/v1/scrape/emails', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeEmailsAndSocials(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping contact info:', error);
+    res.status(500).json({ error: 'Contact Extraction Failed', message: error.message });
+  }
+});
+
+app.post('/v1/scrape/emails', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const { url } = req.body;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL in body.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeEmailsAndSocials(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping contact info:', error);
+    res.status(500).json({ error: 'Contact Extraction Failed', message: error.message });
+  }
+});
+
+// 8. HTML Table Parser
+app.get('/v1/scrape/table', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL parameter.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeTables(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping tables:', error);
+    res.status(500).json({ error: 'Table Extraction Failed', message: error.message });
+  }
+});
+
+app.post('/v1/scrape/table', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const { url } = req.body;
+  if (!url) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL in body.' });
+    return;
+  }
+
+  try {
+    const options = parseScrapeOptions(req);
+    const data = await scrapeTables(url, options);
+    res.json(data);
+  } catch (error: any) {
+    console.error('Error scraping tables:', error);
+    res.status(500).json({ error: 'Table Extraction Failed', message: error.message });
+  }
+});
+
+// 9. Specific Element Screenshot
+app.get('/v1/screenshot/element', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const url = req.query.url as string;
+  const selector = req.query.selector as string;
+  if (!url || !selector) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing URL or selector parameter.' });
+    return;
+  }
+
+  try {
+    const baseOptions = parseScrapeOptions(req);
+    const imageBuffer = await takeElementScreenshot(url, selector, baseOptions);
+    res.set('Content-Type', 'image/png');
+    res.send(imageBuffer);
+  } catch (error: any) {
+    console.error('Element screenshot error:', error);
+    res.status(500).json({ error: 'Element Screenshot Failed', message: error.message });
   }
 });
 

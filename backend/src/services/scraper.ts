@@ -52,6 +52,31 @@ export interface ScreenshotOptions extends ScrapeOptions {
 
 export interface PdfOptions extends ScrapeOptions {}
 
+export interface ContactDetails {
+  emails: string[];
+  phones: string[];
+  socials: {
+    linkedin: string[];
+    twitter: string[];
+    facebook: string[];
+    instagram: string[];
+    github: string[];
+  };
+}
+
+export interface LinksResult {
+  url: string;
+  internal: string[];
+  external: string[];
+  total: number;
+}
+
+export interface TableResult {
+  id: number;
+  headers: string[];
+  rows: Record<string, string>[];
+}
+
 /**
  * Configure request interception on a page to block heavy resources
  * like images, stylesheets, media, and fonts when we only need text.
@@ -534,6 +559,237 @@ export async function scrapeGoogleImages(query: string, numResults: number = 10)
 
     console.log(`[Scraper] Image search complete. Retained ${results.length} organic images.`);
     return results.slice(0, numResults);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Scrapes email addresses, phone numbers, and social media handles from a webpage.
+ */
+export async function scrapeEmailsAndSocials(url: string, options: ScrapeOptions = {}): Promise<ContactDetails> {
+  console.log(`[Scraper] Initiating Contact Scrape for: ${url}`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    await configureRequestInterception(page, options.blockMedia ?? true);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    
+    await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    
+    const html = await page.content();
+    const dom = new JSDOM(html);
+    const document = dom.window.document;
+    
+    const textContent = document.body.textContent || '';
+    
+    // Regex for emails
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const emails = Array.from(new Set(textContent.match(emailRegex) || [])).map(e => e.toLowerCase());
+    
+    // Regex for phone numbers (standard forms)
+    const phoneRegex = /\+?\b\d{1,3}[-.\s]??\(?\d{2,4}\)?[-.\s]??\d{2,4}[-.\s]??\d{2,9}\b/g;
+    const rawPhones = textContent.match(phoneRegex) || [];
+    const phones = Array.from(new Set(rawPhones))
+      .map(p => p.trim())
+      .filter(p => p.length >= 7 && p.length <= 20 && /^\+?[\d\s().-]*$/.test(p));
+    
+    const socials = {
+      linkedin: [] as string[],
+      twitter: [] as string[],
+      facebook: [] as string[],
+      instagram: [] as string[],
+      github: [] as string[],
+    };
+    
+    const anchors = document.querySelectorAll('a');
+    anchors.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (!href) return;
+      
+      const cleanHref = href.trim();
+      if (cleanHref.includes('linkedin.com/')) {
+        socials.linkedin.push(cleanHref);
+      } else if (cleanHref.includes('twitter.com/') || cleanHref.includes('x.com/')) {
+        socials.twitter.push(cleanHref);
+      } else if (cleanHref.includes('facebook.com/')) {
+        socials.facebook.push(cleanHref);
+      } else if (cleanHref.includes('instagram.com/')) {
+        socials.instagram.push(cleanHref);
+      } else if (cleanHref.includes('github.com/')) {
+        socials.github.push(cleanHref);
+      }
+    });
+    
+    socials.linkedin = Array.from(new Set(socials.linkedin));
+    socials.twitter = Array.from(new Set(socials.twitter));
+    socials.facebook = Array.from(new Set(socials.facebook));
+    socials.instagram = Array.from(new Set(socials.instagram));
+    socials.github = Array.from(new Set(socials.github));
+    
+    return { emails, phones, socials };
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Scrapes and groups all internal and external link URLs from a webpage.
+ */
+export async function scrapeLinks(url: string, options: ScrapeOptions = {}): Promise<LinksResult> {
+  console.log(`[Scraper] Initiating Link Scrape for: ${url}`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    await configureRequestInterception(page, options.blockMedia ?? true);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    
+    await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    
+    const parsedUrl = new URL(url);
+    const domain = parsedUrl.hostname;
+    
+    const links = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a'))
+        .map(a => a.getAttribute('href') || '')
+        .filter(Boolean);
+    });
+    
+    const internalSet = new Set<string>();
+    const externalSet = new Set<string>();
+    
+    links.forEach((link) => {
+      const trimmed = link.trim();
+      if (trimmed.startsWith('#') || trimmed.startsWith('javascript:') || trimmed.startsWith('mailto:') || trimmed.startsWith('tel:')) {
+        return;
+      }
+      
+      try {
+        const resolved = new URL(trimmed, url).href;
+        const resolvedHost = new URL(resolved).hostname;
+        
+        if (resolvedHost === domain || resolvedHost.endsWith('.' + domain)) {
+          internalSet.add(resolved);
+        } else {
+          externalSet.add(resolved);
+        }
+      } catch (e) {
+        // Ignore invalid URLs
+      }
+    });
+    
+    const internal = Array.from(internalSet);
+    const external = Array.from(externalSet);
+    
+    return {
+      url,
+      internal,
+      external,
+      total: internal.length + external.length,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Scrapes HTML table contents and returns parsed JSON arrays.
+ */
+export async function scrapeTables(url: string, options: ScrapeOptions = {}): Promise<TableResult[]> {
+  console.log(`[Scraper] Initiating Table Scrape for: ${url}`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    await configureRequestInterception(page, options.blockMedia ?? true);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    
+    await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    
+    const tablesData = await page.evaluate(() => {
+      const tables = document.querySelectorAll('table');
+      const results: any[] = [];
+      
+      tables.forEach((table, index) => {
+        const headers: string[] = [];
+        const rows: any[] = [];
+        
+        // Extract headers
+        const thElements = table.querySelectorAll('th');
+        if (thElements.length > 0) {
+          thElements.forEach((th) => {
+            headers.push(th.textContent?.trim() || '');
+          });
+        }
+        
+        // Extract row elements
+        const trElements = table.querySelectorAll('tr');
+        trElements.forEach((tr) => {
+          const cells = tr.querySelectorAll('td');
+          if (cells.length === 0) return; // skip header row if it didn't use th but tr
+          
+          const rowData: Record<string, string> = {};
+          
+          cells.forEach((td, cellIdx) => {
+            const headerName = headers[cellIdx] || `column_${cellIdx + 1}`;
+            rowData[headerName] = td.textContent?.trim() || '';
+          });
+          
+          if (headers.length < cells.length) {
+            for (let i = headers.length; i < cells.length; i++) {
+              headers.push(`column_${i + 1}`);
+            }
+          }
+          
+          rows.push(rowData);
+        });
+        
+        results.push({
+          id: index + 1,
+          headers,
+          rows
+        });
+      });
+      
+      return results;
+    });
+    
+    return tablesData;
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Captures a screenshot of only the target DOM element.
+ */
+export async function takeElementScreenshot(url: string, selector: string, options: ScrapeOptions = {}): Promise<Buffer> {
+  console.log(`[Scraper] Capturing element screenshot for: ${url} (selector: ${selector})`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    await configureRequestInterception(page, options.blockMedia ?? false);
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    await handleWaitOptions(page, options.wait, options.waitSelector || selector);
+    
+    const element = await page.$(selector);
+    if (!element) {
+      throw new Error(`Requested selector '${selector}' was not found on the page.`);
+    }
+    
+    const screenshotBuffer = await element.screenshot({
+      type: 'png'
+    });
+    
+    return screenshotBuffer as Buffer;
   } finally {
     await page.close();
   }
