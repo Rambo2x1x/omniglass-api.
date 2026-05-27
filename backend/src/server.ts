@@ -7,6 +7,7 @@ import {
   takeScreenshot, 
   convertToPdf, 
   scrapeGoogleSearch,
+  scrapeGoogleImages,
   ScrapeOptions,
   ScreenshotOptions,
   PdfOptions
@@ -43,6 +44,12 @@ function parseScrapeOptions(req: Request): ScrapeOptions {
   const blockMediaVal = req.query.blockMedia || req.body?.blockMedia;
   if (blockMediaVal !== undefined) {
     options.blockMedia = blockMediaVal === 'true' || blockMediaVal === true;
+  }
+
+  // Parse selector (new option)
+  const selectorVal = req.query.selector || req.body?.selector;
+  if (selectorVal) {
+    options.selector = selectorVal as string;
   }
 
   return options;
@@ -190,6 +197,45 @@ app.post('/v1/search', requireRapidApiSecret, async (req: Request, res: Response
   } catch (error: any) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Search Failed', message: error.message });
+  }
+});
+
+// 5. Google Images Scraper
+app.get('/v1/search/images', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.query.q || req.query.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Missing q or query parameter.' });
+    return;
+  }
+
+  const numVal = req.query.num;
+  const numResults = numVal ? Math.min(50, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleImages(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('Image search error:', error);
+    res.status(500).json({ error: 'Image Search Failed', message: error.message });
+  }
+});
+
+app.post('/v1/search/images', requireRapidApiSecret, async (req: Request, res: Response): Promise<void> => {
+  const query = (req.body.q || req.body.query) as string;
+  if (!query) {
+    res.status(400).json({ error: 'Bad Request', message: 'Provide q or query in the request body.' });
+    return;
+  }
+
+  const numVal = req.body.num;
+  const numResults = numVal ? Math.min(50, Math.max(1, parseInt(numVal as string, 10))) : 10;
+
+  try {
+    const results = await scrapeGoogleImages(query, numResults);
+    res.json({ query, resultsCount: results.length, results });
+  } catch (error: any) {
+    console.error('Image search error:', error);
+    res.status(500).json({ error: 'Image Search Failed', message: error.message });
   }
 });
 

@@ -33,10 +33,17 @@ export interface SearchResult {
   snippet: string;
 }
 
+export interface ImageSearchResult {
+  title: string;
+  url: string;
+  sourceUrl: string;
+}
+
 export interface ScrapeOptions {
   wait?: number;
   waitSelector?: string;
   blockMedia?: boolean;
+  selector?: string; // CSS selector to extract specific element
 }
 
 export interface ScreenshotOptions extends ScrapeOptions {
@@ -82,7 +89,7 @@ async function handleWaitOptions(page: Page, wait?: number, waitSelector?: strin
 /**
  * Clean HTML DOM elements by removing noise tags.
  */
-function cleanDom(document: Document): void {
+function cleanDom(document: Document | Element): void {
   const elementsToRemove = [
     'script',
     'style',
@@ -128,7 +135,7 @@ function extractMetadata(document: Document) {
  */
 export async function scrapeToMarkdown(url: string, options: ScrapeOptions = {}): Promise<ScrapeResult> {
   const blockMedia = options.blockMedia ?? true;
-  console.log(`[Scraper] Initiating scrape request for: ${url} (blockMedia: ${blockMedia})`);
+  console.log(`[Scraper] Initiating scrape request for: ${url} (blockMedia: ${blockMedia}, selector: ${options.selector || 'none'})`);
   
   // ==========================================================
   // ENGINE 1: Fast HTTP Fetch (Static Pages)
@@ -156,26 +163,34 @@ export async function scrapeToMarkdown(url: string, options: ScrapeOptions = {})
           const dom = new JSDOM(rawHtml);
           const document = dom.window.document;
 
-          const initialText = document.body.textContent || '';
-          const wordCount = initialText.trim().split(/\s+/).filter(Boolean).length;
+          // If a specific CSS element was requested
+          let targetElement: Element | null = document.body;
+          if (options.selector) {
+            targetElement = document.querySelector(options.selector);
+          }
 
-          if (wordCount > 100) {
-            console.log(`[Scraper] Fast HTTP Engine succeeded (${wordCount} words). Skipping Chromium.`);
-            
-            const meta = extractMetadata(document);
-            cleanDom(document);
+          if (targetElement) {
+            const initialText = targetElement.textContent || '';
+            const wordCount = initialText.trim().split(/\s+/).filter(Boolean).length;
 
-            const bodyHtml = document.body.innerHTML;
-            let markdown = turndownService.turndown(bodyHtml);
+            if (wordCount > 5 || !options.selector) {
+              console.log(`[Scraper] Fast HTTP Engine succeeded (${wordCount} words). Skipping Chromium.`);
+              
+              const meta = extractMetadata(document);
+              cleanDom(targetElement);
 
-            if (markdown.trim()) {
-              return {
-                ...meta,
-                wordCount,
-                readingTimeMinutes: Math.max(1, Math.round(wordCount / 225)),
-                markdown,
-                url,
-              };
+              const bodyHtml = targetElement.innerHTML;
+              let markdown = turndownService.turndown(bodyHtml);
+
+              if (markdown.trim()) {
+                return {
+                  ...meta,
+                  wordCount,
+                  readingTimeMinutes: Math.max(1, Math.round(wordCount / 225)),
+                  markdown,
+                  url,
+                };
+              }
             }
           }
         }
@@ -199,24 +214,36 @@ export async function scrapeToMarkdown(url: string, options: ScrapeOptions = {})
     // Navigate to page
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
 
-    // Handle waiting options (dynamic selectors or timeouts)
-    await handleWaitOptions(page, options.wait, options.waitSelector);
+    // Handle waiting options
+    const activeWaitSelector = options.waitSelector || options.selector;
+    await handleWaitOptions(page, options.wait, activeWaitSelector);
 
     const rawHtml = await page.content();
     const dom = new JSDOM(rawHtml);
     const document = dom.window.document;
 
     const meta = extractMetadata(document);
-    const bodyText = document.body.textContent || '';
+    
+    // Extract target element if specified
+    let targetElement: Element | null = document.body;
+    if (options.selector) {
+      targetElement = document.querySelector(options.selector);
+    }
+
+    if (!targetElement) {
+      throw new Error(`Requested selector '${options.selector}' was not found on the page.`);
+    }
+
+    const bodyText = targetElement.textContent || '';
     const wordCount = bodyText.trim().split(/\s+/).filter(Boolean).length;
 
-    cleanDom(document);
+    cleanDom(targetElement);
 
-    const bodyHtml = document.body.innerHTML;
+    const bodyHtml = targetElement.innerHTML;
     let markdown = turndownService.turndown(bodyHtml);
 
     if (!markdown.trim()) {
-      markdown = "_No readable content found on the page._";
+      markdown = "_No readable content found in the requested section._";
     }
 
     console.log('[Scraper] Chromium rendering complete.');
@@ -248,7 +275,7 @@ export async function takeScreenshot(url: string, options: ScreenshotOptions = {
     await configureRequestInterception(page, blockMedia);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     
-    await handleWaitOptions(page, options.wait, options.waitSelector);
+    await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
 
     const screenshotBuffer = await page.screenshot({
       fullPage,
@@ -279,7 +306,7 @@ export async function convertToPdf(urlOrHtml: string, isHtml: boolean, options: 
       await page.setContent(urlOrHtml, { waitUntil: 'networkidle2' });
     } else {
       await page.goto(urlOrHtml, { waitUntil: 'networkidle2', timeout: 30000 });
-      await handleWaitOptions(page, options.wait, options.waitSelector);
+      await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
     }
 
     const pdfBuffer = await page.pdf({
@@ -391,6 +418,121 @@ export async function scrapeGoogleSearch(query: string, numResults: number = 10)
     }
 
     console.log(`[Scraper] Search complete. Retained ${results.length} organic links.`);
+    return results.slice(0, numResults);
+  } finally {
+    await page.close();
+  }
+}
+
+/**
+ * Scrapes Google Images and extracts high-resolution direct links.
+ */
+/**
+ * Scrapes Google Images and extracts high-resolution direct links. Falls back to Bing Images if Google blocks or returns no results.
+ */
+export async function scrapeGoogleImages(query: string, numResults: number = 10): Promise<ImageSearchResult[]> {
+  console.log(`[Scraper] Querying Image Search for: "${query}"`);
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+
+  try {
+    await page.setViewport({ width: 1280, height: 800 });
+    
+    let results: ImageSearchResult[] = [];
+    
+    try {
+      const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&hl=en`;
+      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+      results = await page.evaluate(() => {
+        const items: any[] = [];
+        const anchors = document.querySelectorAll('a');
+        
+        anchors.forEach((a) => {
+          const href = a.getAttribute('href') || '';
+          if (href.includes('/imgres?')) {
+            // Parse direct image URLs from the Google redirect href parameters
+            const urlParts = href.split('?')[1] || '';
+            const params = urlParts.split('&');
+            let imgurl = '';
+            let imgrefurl = '';
+            
+            params.forEach((param) => {
+              const [key, val] = param.split('=');
+              if (key === 'imgurl') {
+                imgurl = decodeURIComponent(val || '');
+              } else if (key === 'imgrefurl') {
+                imgrefurl = decodeURIComponent(val || '');
+              }
+            });
+
+            const imgEl = a.querySelector('img');
+            const title = imgEl ? imgEl.getAttribute('alt') || '' : '';
+
+            if (imgurl && imgurl.startsWith('http')) {
+              items.push({
+                title: title || 'Image Result',
+                url: imgurl,
+                sourceUrl: imgrefurl || ''
+              });
+            }
+          }
+        });
+
+        // Fallback: If no /imgres links exist, look for any image tags with valid URLs
+        if (items.length === 0) {
+          document.querySelectorAll('img').forEach((img) => {
+            const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+            const alt = img.getAttribute('alt') || '';
+            if (src && src.startsWith('http') && src.length > 50) {
+              items.push({
+                title: alt || 'Image Result',
+                url: src,
+                sourceUrl: window.location.href
+              });
+            }
+          });
+        }
+
+        return items;
+      });
+    } catch (googleErr) {
+      console.log('[Scraper] Google Image request failed or timed out. Falling back to Bing Images...');
+    }
+
+    // If Google returned 0 results or failed, fall back to Bing Images
+    if (results.length === 0) {
+      console.log('[Scraper] Google returned 0 image results. Falling back to Bing Images...');
+      try {
+        const bingUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&first=1`;
+        await page.goto(bingUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        
+        results = await page.evaluate(() => {
+          const items: any[] = [];
+          const elements = document.querySelectorAll('a.iusc');
+          elements.forEach((el) => {
+            const mJson = el.getAttribute('m');
+            if (mJson) {
+              try {
+                const m = JSON.parse(mJson);
+                if (m.murl && m.murl.startsWith('http')) {
+                  items.push({
+                    title: m.t || 'Image Result',
+                    url: m.murl,
+                    sourceUrl: m.purl || ''
+                  });
+                }
+              } catch (e) {}
+            }
+          });
+          return items;
+        });
+      } catch (bingErr: any) {
+        console.error('[Scraper] Bing Images fallback failed:', bingErr.message);
+      }
+    }
+
+    console.log(`[Scraper] Image search complete. Retained ${results.length} organic images.`);
     return results.slice(0, numResults);
   } finally {
     await page.close();
