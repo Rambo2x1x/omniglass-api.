@@ -14,8 +14,6 @@ import {
   Loader2,
   Zap,
   FileText,
-  Camera,
-  ExternalLink,
   TrendingUp,
   Clock,
   CheckCircle,
@@ -96,7 +94,13 @@ export default function App() {
   // Playground State
   const [pgKey, setPgKey] = useState('');
   const [pgUrl, setPgUrl] = useState('https://example.com');
-  const [pgAction, setPgAction] = useState<'scrape' | 'screenshot' | 'pdf'>('scrape');
+  const [pgAction, setPgAction] = useState<string>('scrape');
+  const [pgQuery, setPgQuery] = useState('web scraping');
+  const [pgSelector, setPgSelector] = useState('h1');
+  const [pgHtml, setPgHtml] = useState('<h1>Hello World</h1>');
+  const [pgNum, setPgNum] = useState(10);
+  const [pgBlockMedia, setPgBlockMedia] = useState(true);
+  const [pgFullPage, setPgFullPage] = useState(true);
   const [pgLoading, setPgLoading] = useState(false);
   const [pgResult, setPgResult] = useState<any>(null);
   const [pgResponseHeaders, setPgResponseHeaders] = useState<Record<string, string>>({});
@@ -322,8 +326,21 @@ export default function App() {
       alert('Please create and copy an API key first.');
       return;
     }
-    if (!pgUrl) {
+
+    const needsUrl = !['search', 'images', 'news', 'suggest', 'html_pdf'].includes(pgAction);
+    const needsQuery = ['search', 'images', 'news', 'suggest'].includes(pgAction);
+    const needsHtml = pgAction === 'html_pdf';
+
+    if (needsUrl && !pgUrl) {
       alert('Please provide a URL.');
+      return;
+    }
+    if (needsQuery && !pgQuery) {
+      alert('Please provide a search query.');
+      return;
+    }
+    if (needsHtml && !pgHtml) {
+      alert('Please provide HTML content.');
       return;
     }
 
@@ -333,18 +350,87 @@ export default function App() {
     setPgLatency(null);
 
     const startTime = Date.now();
-    const endpointMap = {
-      scrape: `/v1/scrape?url=${encodeURIComponent(pgUrl)}`,
-      screenshot: `/v1/screenshot?url=${encodeURIComponent(pgUrl)}`,
-      pdf: `/v1/pdf?url=${encodeURIComponent(pgUrl)}`,
-    };
+    let fetchUrl = '';
+    let fetchMethod = 'GET';
+    let fetchBody: any = null;
+
+    const blockMediaParam = pgBlockMedia ? '&blockMedia=true' : '&blockMedia=false';
+    const fullPageParam = pgFullPage ? '&fullPage=true' : '&fullPage=false';
+
+    switch (pgAction) {
+      case 'scrape':
+        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        break;
+      case 'selector':
+        fetchMethod = 'POST';
+        fetchBody = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia };
+        fetchUrl = `/v1/scrape`;
+        break;
+      case 'raw':
+        fetchUrl = `/v1/scrape/raw?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        break;
+      case 'metadata':
+        fetchUrl = `/v1/scrape/metadata?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'status':
+        fetchUrl = `/v1/scrape/status?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'screenshot':
+        fetchUrl = `/v1/screenshot?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}`;
+        break;
+      case 'element_screenshot':
+        fetchUrl = `/v1/screenshot/element?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}`;
+        break;
+      case 'pdf':
+        fetchUrl = `/v1/pdf?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'html_pdf':
+        fetchMethod = 'POST';
+        fetchBody = { html: pgHtml };
+        fetchUrl = `/v1/pdf`;
+        break;
+      case 'emails':
+        fetchUrl = `/v1/scrape/emails?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'links':
+        fetchUrl = `/v1/scrape/links?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'table':
+        fetchUrl = `/v1/scrape/table?url=${encodeURIComponent(pgUrl)}`;
+        break;
+      case 'search':
+        fetchUrl = `/v1/search?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
+        break;
+      case 'images':
+        fetchUrl = `/v1/search/images?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
+        break;
+      case 'news':
+        fetchUrl = `/v1/search/news?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
+        break;
+      case 'suggest':
+        fetchUrl = `/v1/search/suggest?q=${encodeURIComponent(pgQuery)}`;
+        break;
+      default:
+        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}`;
+    }
 
     try {
-      const res = await fetch(`${API_BASE}${endpointMap[pgAction]}`, {
+      const fetchOptions: RequestInit = {
+        method: fetchMethod,
         headers: {
           'X-API-Key': pgKey,
         },
-      });
+      };
+
+      if (fetchBody) {
+        fetchOptions.headers = {
+          ...fetchOptions.headers,
+          'Content-Type': 'application/json'
+        };
+        fetchOptions.body = JSON.stringify(fetchBody);
+      }
+
+      const res = await fetch(`${API_BASE}${fetchUrl}`, fetchOptions);
 
       setPgStatus(res.status);
       setPgLatency(Date.now() - startTime);
@@ -362,17 +448,22 @@ export default function App() {
         return;
       }
 
-      if (pgAction === 'scrape') {
-        const data = await res.json();
-        setPgResult(data);
-      } else if (pgAction === 'screenshot') {
+      const contentType = res.headers.get('content-type') || '';
+      
+      if (contentType.includes('image/')) {
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
         setPgResult({ type: 'image', url: objectUrl });
-      } else if (pgAction === 'pdf') {
+      } else if (contentType.includes('application/pdf')) {
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
         setPgResult({ type: 'pdf', url: objectUrl });
+      } else if (contentType.includes('text/html')) {
+        const text = await res.text();
+        setPgResult({ type: 'html', content: text });
+      } else {
+        const data = await res.json().catch(() => null);
+        setPgResult(data || { message: 'Empty or invalid JSON response.' });
       }
     } catch (error: any) {
       setPgStatus(500);
@@ -397,111 +488,163 @@ export default function App() {
   const getDocCode = () => {
     const activeKeyVal = keys.length > 0 ? 'os_your_api_key_here' : 'YOUR_API_KEY';
     const cleanUrl = pgUrl || 'https://example.com';
+    const cleanQuery = pgQuery || 'web scraping';
+    const cleanSelector = pgSelector || 'h1';
     
+    let method = 'GET';
+    let path = '';
+    let bodyObj: any = null;
+    let queryParams = '';
+
+    switch (pgAction) {
+      case 'scrape':
+        path = '/v1/scrape';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}&blockMedia=${pgBlockMedia}`;
+        break;
+      case 'selector':
+        method = 'POST';
+        path = '/v1/scrape';
+        bodyObj = { url: cleanUrl, selector: cleanSelector, blockMedia: pgBlockMedia };
+        break;
+      case 'raw':
+        path = '/v1/scrape/raw';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}&blockMedia=${pgBlockMedia}`;
+        break;
+      case 'metadata':
+        path = '/v1/scrape/metadata';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'status':
+        path = '/v1/scrape/status';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'screenshot':
+        path = '/v1/screenshot';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}&fullPage=${pgFullPage}&blockMedia=${pgBlockMedia}`;
+        break;
+      case 'element_screenshot':
+        path = '/v1/screenshot/element';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}&selector=${encodeURIComponent(cleanSelector)}`;
+        break;
+      case 'pdf':
+        path = '/v1/pdf';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'html_pdf':
+        method = 'POST';
+        path = '/v1/pdf';
+        bodyObj = { html: pgHtml };
+        break;
+      case 'emails':
+        path = '/v1/scrape/emails';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'links':
+        path = '/v1/scrape/links';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'table':
+        path = '/v1/scrape/table';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        break;
+      case 'search':
+        path = '/v1/search';
+        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
+        break;
+      case 'images':
+        path = '/v1/search/images';
+        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
+        break;
+      case 'news':
+        path = '/v1/search/news';
+        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
+        break;
+      case 'suggest':
+        path = '/v1/search/suggest';
+        queryParams = `?q=${encodeURIComponent(cleanQuery)}`;
+        break;
+      default:
+        path = '/v1/scrape';
+        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+    }
+
+    const fullUrl = `${API_BASE}${path}${queryParams}`;
+
     if (docLang === 'curl') {
-      if (pgAction === 'scrape') {
-        return `curl -X GET "${API_BASE}/v1/scrape?url=${encodeURIComponent(cleanUrl)}"\n  -H "X-API-Key: ${activeKeyVal}"`;
-      } else if (pgAction === 'screenshot') {
-        return `curl -X GET "${API_BASE}/v1/screenshot?url=${encodeURIComponent(cleanUrl)}"\n  -H "X-API-Key: ${activeKeyVal}"\n  --output screenshot.png`;
+      if (method === 'GET') {
+        return `curl -X GET "${fullUrl}" \\\n  -H "X-API-Key: ${activeKeyVal}"`;
       } else {
-        return `curl -X GET "${API_BASE}/v1/pdf?url=${encodeURIComponent(cleanUrl)}"\n  -H "X-API-Key: ${activeKeyVal}"\n  --output document.pdf`;
+        return `curl -X POST "${API_BASE}${path}" \\\n  -H "X-API-Key: ${activeKeyVal}" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(bodyObj, null, 2)}'`;
       }
     }
-    
+
     if (docLang === 'js') {
-      if (pgAction === 'scrape') {
-        return `// Install Node-Fetch or run in modern browser
-fetch("${API_BASE}/v1/scrape?url=${encodeURIComponent(cleanUrl)}", {
+      if (method === 'GET') {
+        const isBinary = ['screenshot', 'element_screenshot', 'pdf', 'html_pdf'].includes(pgAction);
+        return `// Fetch request using modern JavaScript
+fetch("${fullUrl}", {
   headers: {
     "X-API-Key": "${activeKeyVal}"
   }
+})
+  .then(res => ${isBinary ? 'res.blob()' : 'res.json()'})
+  .then(data => {
+    console.log(data);
+  })
+  .catch(err => console.error(err));`;
+      } else {
+        return `// Send JSON POST request
+fetch("${API_BASE}${path}", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "${activeKeyVal}"
+  },
+  body: JSON.stringify(${JSON.stringify(bodyObj, null, 2)})
 })
   .then(res => res.json())
-  .then(data => console.log(data.markdown))
+  .then(data => console.log(data))
   .catch(err => console.error(err));`;
-      } else if (pgAction === 'screenshot') {
-        return `// Capture screenshot and save or display
-fetch("${API_BASE}/v1/screenshot?url=${encodeURIComponent(cleanUrl)}", {
-  headers: {
-    "X-API-Key": "${activeKeyVal}"
-  }
-})
-  .then(res => res.blob())
-  .then(imageBlob => {
-    const imageUrl = URL.createObjectURL(imageBlob);
-    document.getElementById("preview").src = imageUrl;
-  });`;
-      } else {
-        return `// Generate PDF document and download
-fetch("${API_BASE}/v1/pdf?url=${encodeURIComponent(cleanUrl)}", {
-  headers: {
-    "X-API-Key": "${activeKeyVal}"
-  }
-})
-  .then(res => res.blob())
-  .then(pdfBlob => {
-    const downloadUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = "document.pdf";
-    a.click();
-  });`;
       }
     }
 
     if (docLang === 'python') {
-      if (pgAction === 'scrape') {
+      if (method === 'GET') {
+        const isBinary = ['screenshot', 'element_screenshot', 'pdf', 'html_pdf'].includes(pgAction);
+        const queryParamsPython = queryParams ? `, params=${JSON.stringify(
+          Object.fromEntries(new URLSearchParams(queryParams)), null, 2
+        ).replace(/\n/g, '\n  ')}` : '';
+        
         return `import requests
 
-url = "${API_BASE}/v1/scrape"
+url = "${API_BASE}${path}"
 headers = {
     "X-API-Key": "${activeKeyVal}"
 }
-params = {
-    "url": "${cleanUrl}"
-}
 
-response = requests.get(url, headers=headers, params=params)
+response = requests.get(url, headers=headers${queryParamsPython})
 if response.status_code == 200:
-    data = response.json()
-    print("Page Title:", data["title"])
-    print("Markdown Content:\\n", data["markdown"])
+    ${isBinary ? 'with open("result.bin", "wb") as f:\n        f.write(response.content)\n    print("Binary content saved.")' : 'data = response.json()\n    print(data)'}
 else:
     print("Error:", response.status_code, response.text)`;
-      } else if (pgAction === 'screenshot') {
-        return `import requests
-
-url = "${API_BASE}/v1/screenshot"
-headers = {
-    "X-API-Key": "${activeKeyVal}"
-}
-params = {
-    "url": "${cleanUrl}"
-}
-
-response = requests.get(url, headers=headers, params=params)
-if response.status_code == 200:
-    with open("screenshot.png", "wb") as file:
-        file.write(response.content)
-    print("Screenshot saved as screenshot.png")`;
       } else {
         return `import requests
 
-url = "${API_BASE}/v1/pdf"
+url = "${API_BASE}${path}"
 headers = {
+    "Content-Type": "application/json",
     "X-API-Key": "${activeKeyVal}"
 }
-params = {
-    "url": "${cleanUrl}"
-}
+data = ${JSON.stringify(bodyObj, null, 4).replace(/\n/g, '\n')}
 
-response = requests.get(url, headers=headers, params=params)
+response = requests.post(url, headers=headers, json=data)
 if response.status_code == 200:
-    with open("document.pdf", "wb") as file:
-        file.write(response.content)
-    print("PDF saved as document.pdf")`;
+    print(response.json())
+else:
+    print("Error:", response.status_code, response.text)`;
       }
     }
+
     return '';
   };
 
@@ -957,44 +1100,153 @@ if response.status_code == 200:
                     </span>
                   </div>
 
-                  {/* Target URL */}
-                  <div className="flex-col" style={{ gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target URL</label>
-                    <input
-                      type="url"
-                      value={pgUrl}
-                      onChange={(e) => setPgUrl(e.target.value)}
-                      placeholder="e.g. https://news.ycombinator.com"
-                    />
-                  </div>
-
                   {/* Endpoint/Action selection */}
                   <div className="flex-col" style={{ gap: '0.25rem' }}>
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>API Endpoint</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                      <button
-                        onClick={() => setPgAction('scrape')}
-                        className={`btn ${pgAction === 'scrape' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '0.5rem' }}
-                      >
-                        <FileText size={16} /> Markdown
-                      </button>
-                      <button
-                        onClick={() => setPgAction('screenshot')}
-                        className={`btn ${pgAction === 'screenshot' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '0.5rem' }}
-                      >
-                        <Camera size={16} /> Screenshot
-                      </button>
-                      <button
-                        onClick={() => setPgAction('pdf')}
-                        className={`btn ${pgAction === 'pdf' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '0.5rem' }}
-                      >
-                        <ExternalLink size={16} /> PDF
-                      </button>
-                    </div>
+                    <select
+                      value={pgAction}
+                      onChange={(e) => {
+                        setPgAction(e.target.value);
+                        setPgResult(null);
+                        setPgStatus(null);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.6rem',
+                        borderRadius: '6px',
+                        backgroundColor: 'var(--bg-main)',
+                        color: '#fff',
+                        border: '1px solid var(--border-color)',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <optgroup label="Core Scraping & Extraction">
+                        <option value="scrape">Webpage to Markdown (RAG)</option>
+                        <option value="selector">Element Selector Extraction</option>
+                        <option value="raw">Raw HTML Scraper</option>
+                        <option value="metadata">SEO Metadata Extractor</option>
+                        <option value="status">SSL & Domain Auditor</option>
+                      </optgroup>
+                      <optgroup label="Media & Generation">
+                        <option value="screenshot">Capture Webpage Screenshot</option>
+                        <option value="element_screenshot">Capture Element Screenshot</option>
+                        <option value="pdf">Convert Webpage to PDF</option>
+                        <option value="html_pdf">Convert HTML to PDF</option>
+                      </optgroup>
+                      <optgroup label="Advanced Scrapes & Lead Gen">
+                        <option value="emails">Extract Emails & Social Handles</option>
+                        <option value="links">Extract Page Links</option>
+                        <option value="table">Parse Tables to JSON</option>
+                      </optgroup>
+                      <optgroup label="Search & Discovery">
+                        <option value="search">Organic Web Search (SERP)</option>
+                        <option value="images">Organic Image Search</option>
+                        <option value="news">Google News Search</option>
+                        <option value="suggest">Keyword Autocomplete Suggestions</option>
+                      </optgroup>
+                    </select>
                   </div>
+
+                  {/* Target URL */}
+                  {!['search', 'images', 'news', 'suggest', 'html_pdf'].includes(pgAction) && (
+                    <div className="flex-col" style={{ gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target URL</label>
+                      <input
+                        type="url"
+                        value={pgUrl}
+                        onChange={(e) => setPgUrl(e.target.value)}
+                        placeholder="e.g. https://news.ycombinator.com"
+                      />
+                    </div>
+                  )}
+
+                  {/* Search Query */}
+                  {['search', 'images', 'news', 'suggest'].includes(pgAction) && (
+                    <div className="flex-col" style={{ gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search Query (q)</label>
+                      <input
+                        type="text"
+                        value={pgQuery}
+                        onChange={(e) => setPgQuery(e.target.value)}
+                        placeholder="e.g. web scraping"
+                      />
+                    </div>
+                  )}
+
+                  {/* CSS Selector */}
+                  {['selector', 'element_screenshot'].includes(pgAction) && (
+                    <div className="flex-col" style={{ gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>CSS Selector</label>
+                      <input
+                        type="text"
+                        value={pgSelector}
+                        onChange={(e) => setPgSelector(e.target.value)}
+                        placeholder="e.g. article.post-content or #main-content"
+                      />
+                    </div>
+                  )}
+
+                  {/* HTML Content */}
+                  {pgAction === 'html_pdf' && (
+                    <div className="flex-col" style={{ gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Raw HTML Content</label>
+                      <textarea
+                        value={pgHtml}
+                        onChange={(e) => setPgHtml(e.target.value)}
+                        placeholder="<h1>Compile me to PDF</h1>"
+                        rows={6}
+                        style={{
+                          backgroundColor: 'var(--bg-main)',
+                          color: '#fff',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '0.6rem',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.8rem'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Results Count */}
+                  {['search', 'images', 'news'].includes(pgAction) && (
+                    <div className="flex-col" style={{ gap: '0.25rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Results Count (num)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={pgNum}
+                        onChange={(e) => setPgNum(parseInt(e.target.value, 10) || 10)}
+                      />
+                    </div>
+                  )}
+
+                  {/* Checkboxes */}
+                  {['scrape', 'selector', 'raw', 'screenshot', 'element_screenshot'].includes(pgAction) && (
+                    <div className="flex-row mt-1" style={{ gap: '1.25rem', justifyContent: 'flex-start' }}>
+                      {['scrape', 'selector', 'raw', 'screenshot'].includes(pgAction) && (
+                        <label className="flex-row" style={{ gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={pgBlockMedia}
+                            onChange={(e) => setPgBlockMedia(e.target.checked)}
+                          />
+                          <span>Block Heavy Media/Styles</span>
+                        </label>
+                      )}
+                      {pgAction === 'screenshot' && (
+                        <label className="flex-row" style={{ gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={pgFullPage}
+                            onChange={(e) => setPgFullPage(e.target.checked)}
+                          />
+                          <span>Full Page Screenshot</span>
+                        </label>
+                      )}
+                    </div>
+                  )}
 
                   <button
                     onClick={runPlaygroundRequest}
@@ -1061,16 +1313,7 @@ if response.status_code == 200:
                     <div style={{ flexGrow: 1 }}>
                       <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }} className="mb-1">Response Payload</h4>
                       
-                      {pgAction === 'scrape' && (
-                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                          <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                            <strong>Title:</strong> {pgResult.title}
-                          </div>
-                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pgResult.markdown}</pre>
-                        </div>
-                      )}
-
-                      {pgAction === 'screenshot' && pgResult.type === 'image' && (
+                      {pgResult.type === 'image' && (
                         <div className="preview-pane" style={{ display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
                           <img
                             src={pgResult.url}
@@ -1080,7 +1323,7 @@ if response.status_code == 200:
                         </div>
                       )}
 
-                      {pgAction === 'pdf' && pgResult.type === 'pdf' && (
+                      {pgResult.type === 'pdf' && (
                         <div className="preview-pane flex-center flex-col" style={{ gap: '1rem' }}>
                           <FileText size={48} style={{ color: 'var(--secondary)' }} />
                           <p style={{ textAlign: 'center', fontSize: '0.9rem' }}>
@@ -1089,6 +1332,29 @@ if response.status_code == 200:
                           <a href={pgResult.url} download="page.pdf" className="btn btn-primary">
                             Download Generated PDF
                           </a>
+                        </div>
+                      )}
+
+                      {pgResult.type === 'html' && (
+                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
+                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pgResult.content}</pre>
+                        </div>
+                      )}
+
+                      {/* Custom Markdown view for scraper responses */}
+                      {!pgResult.type && (pgAction === 'scrape' || pgAction === 'selector') && pgResult.markdown && (
+                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
+                          <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+                            <strong>Title:</strong> {pgResult.title || 'Untitled'}
+                          </div>
+                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pgResult.markdown}</pre>
+                        </div>
+                      )}
+
+                      {/* General pretty JSON preview for all other endpoints */}
+                      {!pgResult.type && !((pgAction === 'scrape' || pgAction === 'selector') && pgResult.markdown) && (
+                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
+                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(pgResult, null, 2)}</pre>
                         </div>
                       )}
 
@@ -1105,7 +1371,7 @@ if response.status_code == 200:
                   <div className="flex-center" style={{ flexGrow: 1, color: 'var(--text-muted)', textAlign: 'center', flexDirection: 'column', gap: '0.5rem' }}>
                     <HelpCircle size={36} />
                     <p style={{ fontSize: '0.9rem' }}>
-                      Configure the URL and parameters on the left and trigger the API request.
+                      Configure the parameters on the left and trigger the API request.
                     </p>
                   </div>
                 )}
@@ -1125,39 +1391,52 @@ if response.status_code == 200:
             <div className="grid-1-2">
               <div className="card flex-col" style={{ height: 'fit-content', gap: '1.25rem' }}>
                 <h3>Endpoints Reference</h3>
-                
-                <div>
-                  <div className="flex-row">
-                    <span className="badge badge-green" style={{ fontFamily: 'var(--font-mono)' }}>GET</span>
-                    <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>/v1/scrape</strong>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                    Scrapes a webpage, strips advertising and styles, and translates standard articles to Markdown.
-                  </p>
-                </div>
-
-                <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-
-                <div>
-                  <div className="flex-row">
-                    <span className="badge badge-green" style={{ fontFamily: 'var(--font-mono)' }}>GET</span>
-                    <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>/v1/screenshot</strong>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                    Launches a viewport frame and captures high resolution PNG images. Returns binary screenshot image.
-                  </p>
-                </div>
-
-                <div style={{ height: '1px', backgroundColor: 'var(--border-color)' }}></div>
-
-                <div>
-                  <div className="flex-row">
-                    <span className="badge badge-green" style={{ fontFamily: 'var(--font-mono)' }}>GET</span>
-                    <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem' }}>/v1/pdf</strong>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                    Renders an A4 PDF document layout from target web contents. Returns binary PDF file.
-                  </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '480px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                  {[
+                    { id: 'scrape', method: 'GET', path: '/v1/scrape', desc: 'Webpage to Markdown (RAG Ingestion)' },
+                    { id: 'selector', method: 'POST', path: '/v1/scrape', desc: 'Isolate CSS Element to Markdown' },
+                    { id: 'raw', method: 'GET', path: '/v1/scrape/raw', desc: 'Raw HTML Code Grabber' },
+                    { id: 'metadata', method: 'GET', path: '/v1/scrape/metadata', desc: 'SEO & OpenGraph Tags Extractor' },
+                    { id: 'status', method: 'GET', path: '/v1/scrape/status', desc: 'SSL & Domain Performance Auditor' },
+                    { id: 'screenshot', method: 'GET', path: '/v1/screenshot', desc: 'Capture Layout Screenshot (PNG)' },
+                    { id: 'element_screenshot', method: 'GET', path: '/v1/screenshot/element', desc: 'Crop Screenshot to CSS Selector' },
+                    { id: 'pdf', method: 'GET', path: '/v1/pdf', desc: 'Convert Webpage layout to PDF' },
+                    { id: 'html_pdf', method: 'POST', path: '/v1/pdf', desc: 'Compile Raw HTML String to PDF' },
+                    { id: 'emails', method: 'GET', path: '/v1/scrape/emails', desc: 'B2B Leads Email & Social Extractor' },
+                    { id: 'links', method: 'GET', path: '/v1/scrape/links', desc: 'Extract and Audit Hyperlinks' },
+                    { id: 'table', method: 'GET', path: '/v1/scrape/table', desc: 'Parse HTML Tables into JSON Arrays' },
+                    { id: 'search', method: 'GET', path: '/v1/search', desc: 'Organic Google Search (SERP)' },
+                    { id: 'images', method: 'GET', path: '/v1/search/images', desc: 'Google/Bing Organic Image Search' },
+                    { id: 'news', method: 'GET', path: '/v1/search/news', desc: 'Scrape Google News Listings' },
+                    { id: 'suggest', method: 'GET', path: '/v1/search/suggest', desc: 'Google Autocomplete Suggestions' },
+                  ].map((ep) => (
+                    <div
+                      key={ep.id}
+                      onClick={() => setPgAction(ep.id)}
+                      style={{
+                        padding: '0.6rem',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: pgAction === ep.id ? 'rgba(6, 182, 212, 0.08)' : 'transparent',
+                        borderColor: pgAction === ep.id ? 'var(--secondary)' : 'var(--border-color)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      className="endpoint-item"
+                    >
+                      <div className="flex-row" style={{ justifyContent: 'flex-start', gap: '0.5rem' }}>
+                        <span className={`badge ${ep.method === 'GET' ? 'badge-green' : 'badge-purple'}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', fontFamily: 'var(--font-mono)' }}>
+                          {ep.method}
+                        </span>
+                        <strong style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: pgAction === ep.id ? '#fff' : 'var(--text-secondary)' }}>
+                          {ep.path}
+                        </strong>
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', paddingLeft: '0.25rem' }}>
+                        {ep.desc}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
