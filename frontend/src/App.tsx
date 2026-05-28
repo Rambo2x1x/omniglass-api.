@@ -13,7 +13,6 @@ import {
   Send,
   Loader2,
   Zap,
-  FileText,
   TrendingUp,
   Clock,
   CheckCircle,
@@ -62,9 +61,9 @@ interface AnalyticsData {
   };
   chartData: Array<{
     date: string;
-    Scrape: number;
-    Screenshot: number;
-    PDF: number;
+    Verify: number;
+    Enrich: number;
+    Phone: number;
   }>;
   recentRequests: RecentRequest[];
 }
@@ -93,14 +92,10 @@ export default function App() {
 
   // Playground State
   const [pgKey, setPgKey] = useState('');
-  const [pgUrl, setPgUrl] = useState('https://example.com');
-  const [pgAction, setPgAction] = useState<string>('scrape');
-  const [pgQuery, setPgQuery] = useState('web scraping');
-  const [pgSelector, setPgSelector] = useState('h1');
-  const [pgHtml, setPgHtml] = useState('<h1>Hello World</h1>');
-  const [pgNum, setPgNum] = useState(10);
-  const [pgBlockMedia, setPgBlockMedia] = useState(true);
-  const [pgFullPage, setPgFullPage] = useState(true);
+  const [pgEmail, setPgEmail] = useState('alex.jones@stripe.com');
+  const [pgDomain, setPgDomain] = useState('stripe.com');
+  const [pgPhone, setPgPhone] = useState('+14155552671');
+  const [pgAction, setPgAction] = useState<string>('verify_email');
   const [pgLoading, setPgLoading] = useState(false);
   const [pgResult, setPgResult] = useState<any>(null);
   const [pgResponseHeaders, setPgResponseHeaders] = useState<Record<string, string>>({});
@@ -327,20 +322,16 @@ export default function App() {
       return;
     }
 
-    const needsUrl = !['search', 'images', 'news', 'suggest', 'html_pdf'].includes(pgAction);
-    const needsQuery = ['search', 'images', 'news', 'suggest'].includes(pgAction);
-    const needsHtml = pgAction === 'html_pdf';
-
-    if (needsUrl && !pgUrl) {
-      alert('Please provide a URL.');
+    if (['verify_email', 'enrich_email'].includes(pgAction) && !pgEmail) {
+      alert('Please provide an email address.');
       return;
     }
-    if (needsQuery && !pgQuery) {
-      alert('Please provide a search query.');
+    if (pgAction === 'enrich_domain' && !pgDomain) {
+      alert('Please provide a domain name.');
       return;
     }
-    if (needsHtml && !pgHtml) {
-      alert('Please provide HTML content.');
+    if (pgAction === 'verify_phone' && !pgPhone) {
+      alert('Please provide a phone number.');
       return;
     }
 
@@ -351,86 +342,31 @@ export default function App() {
 
     const startTime = Date.now();
     let fetchUrl = '';
-    let fetchMethod = 'GET';
-    let fetchBody: any = null;
-
-    const blockMediaParam = pgBlockMedia ? '&blockMedia=true' : '&blockMedia=false';
-    const fullPageParam = pgFullPage ? '&fullPage=true' : '&fullPage=false';
 
     switch (pgAction) {
-      case 'scrape':
-        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+      case 'verify_email':
+        fetchUrl = `/v1/verify/email?email=${encodeURIComponent(pgEmail)}`;
         break;
-      case 'selector':
-        fetchMethod = 'POST';
-        fetchBody = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia };
-        fetchUrl = `/v1/scrape`;
+      case 'enrich_domain':
+        fetchUrl = `/v1/enrich/domain?domain=${encodeURIComponent(pgDomain)}`;
         break;
-      case 'raw':
-        fetchUrl = `/v1/scrape/raw?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+      case 'enrich_email':
+        fetchUrl = `/v1/enrich/email?email=${encodeURIComponent(pgEmail)}`;
         break;
-      case 'metadata':
-        fetchUrl = `/v1/scrape/metadata?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'status':
-        fetchUrl = `/v1/scrape/status?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'screenshot':
-        fetchUrl = `/v1/screenshot?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}`;
-        break;
-      case 'element_screenshot':
-        fetchUrl = `/v1/screenshot/element?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}`;
-        break;
-      case 'pdf':
-        fetchUrl = `/v1/pdf?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'html_pdf':
-        fetchMethod = 'POST';
-        fetchBody = { html: pgHtml };
-        fetchUrl = `/v1/pdf`;
-        break;
-      case 'emails':
-        fetchUrl = `/v1/scrape/emails?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'links':
-        fetchUrl = `/v1/scrape/links?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'table':
-        fetchUrl = `/v1/scrape/table?url=${encodeURIComponent(pgUrl)}`;
-        break;
-      case 'search':
-        fetchUrl = `/v1/search?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
-        break;
-      case 'images':
-        fetchUrl = `/v1/search/images?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
-        break;
-      case 'news':
-        fetchUrl = `/v1/search/news?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
-        break;
-      case 'suggest':
-        fetchUrl = `/v1/search/suggest?q=${encodeURIComponent(pgQuery)}`;
+      case 'verify_phone':
+        fetchUrl = `/v1/verify/phone?phone=${encodeURIComponent(pgPhone)}`;
         break;
       default:
-        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/verify/email?email=${encodeURIComponent(pgEmail)}`;
     }
 
     try {
-      const fetchOptions: RequestInit = {
-        method: fetchMethod,
+      const res = await fetch(`${API_BASE}${fetchUrl}`, {
+        method: 'GET',
         headers: {
           'X-API-Key': pgKey,
         },
-      };
-
-      if (fetchBody) {
-        fetchOptions.headers = {
-          ...fetchOptions.headers,
-          'Content-Type': 'application/json'
-        };
-        fetchOptions.body = JSON.stringify(fetchBody);
-      }
-
-      const res = await fetch(`${API_BASE}${fetchUrl}`, fetchOptions);
+      });
 
       setPgStatus(res.status);
       setPgLatency(Date.now() - startTime);
@@ -448,23 +384,8 @@ export default function App() {
         return;
       }
 
-      const contentType = res.headers.get('content-type') || '';
-      
-      if (contentType.includes('image/')) {
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        setPgResult({ type: 'image', url: objectUrl });
-      } else if (contentType.includes('application/pdf')) {
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        setPgResult({ type: 'pdf', url: objectUrl });
-      } else if (contentType.includes('text/html')) {
-        const text = await res.text();
-        setPgResult({ type: 'html', content: text });
-      } else {
-        const data = await res.json().catch(() => null);
-        setPgResult(data || { message: 'Empty or invalid JSON response.' });
-      }
+      const data = await res.json().catch(() => null);
+      setPgResult(data || { message: 'Empty or invalid JSON response.' });
     } catch (error: any) {
       setPgStatus(500);
       setPgResult({ error: 'Request Failed', message: error.message || 'Network error.' });
@@ -487,162 +408,69 @@ export default function App() {
   // Generate code block code string based on language
   const getDocCode = () => {
     const activeKeyVal = keys.length > 0 ? 'os_your_api_key_here' : 'YOUR_API_KEY';
-    const cleanUrl = pgUrl || 'https://example.com';
-    const cleanQuery = pgQuery || 'web scraping';
-    const cleanSelector = pgSelector || 'h1';
+    const cleanEmail = pgEmail || 'alex.jones@stripe.com';
+    const cleanDomain = pgDomain || 'stripe.com';
+    const cleanPhone = pgPhone || '+14155552671';
     
-    let method = 'GET';
     let path = '';
-    let bodyObj: any = null;
     let queryParams = '';
 
     switch (pgAction) {
-      case 'scrape':
-        path = '/v1/scrape';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}&blockMedia=${pgBlockMedia}`;
+      case 'verify_email':
+        path = '/v1/verify/email';
+        queryParams = `?email=${encodeURIComponent(cleanEmail)}`;
         break;
-      case 'selector':
-        method = 'POST';
-        path = '/v1/scrape';
-        bodyObj = { url: cleanUrl, selector: cleanSelector, blockMedia: pgBlockMedia };
+      case 'enrich_domain':
+        path = '/v1/enrich/domain';
+        queryParams = `?domain=${encodeURIComponent(cleanDomain)}`;
         break;
-      case 'raw':
-        path = '/v1/scrape/raw';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}&blockMedia=${pgBlockMedia}`;
+      case 'enrich_email':
+        path = '/v1/enrich/email';
+        queryParams = `?email=${encodeURIComponent(cleanEmail)}`;
         break;
-      case 'metadata':
-        path = '/v1/scrape/metadata';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'status':
-        path = '/v1/scrape/status';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'screenshot':
-        path = '/v1/screenshot';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}&fullPage=${pgFullPage}&blockMedia=${pgBlockMedia}`;
-        break;
-      case 'element_screenshot':
-        path = '/v1/screenshot/element';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}&selector=${encodeURIComponent(cleanSelector)}`;
-        break;
-      case 'pdf':
-        path = '/v1/pdf';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'html_pdf':
-        method = 'POST';
-        path = '/v1/pdf';
-        bodyObj = { html: pgHtml };
-        break;
-      case 'emails':
-        path = '/v1/scrape/emails';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'links':
-        path = '/v1/scrape/links';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'table':
-        path = '/v1/scrape/table';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
-        break;
-      case 'search':
-        path = '/v1/search';
-        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
-        break;
-      case 'images':
-        path = '/v1/search/images';
-        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
-        break;
-      case 'news':
-        path = '/v1/search/news';
-        queryParams = `?q=${encodeURIComponent(cleanQuery)}&num=${pgNum}`;
-        break;
-      case 'suggest':
-        path = '/v1/search/suggest';
-        queryParams = `?q=${encodeURIComponent(cleanQuery)}`;
+      case 'verify_phone':
+        path = '/v1/verify/phone';
+        queryParams = `?phone=${encodeURIComponent(cleanPhone)}`;
         break;
       default:
-        path = '/v1/scrape';
-        queryParams = `?url=${encodeURIComponent(cleanUrl)}`;
+        path = '/v1/verify/email';
+        queryParams = `?email=${encodeURIComponent(cleanEmail)}`;
     }
 
     const fullUrl = `${API_BASE}${path}${queryParams}`;
 
     if (docLang === 'curl') {
-      if (method === 'GET') {
-        return `curl -X GET "${fullUrl}" \\\n  -H "X-API-Key: ${activeKeyVal}"`;
-      } else {
-        return `curl -X POST "${API_BASE}${path}" \\\n  -H "X-API-Key: ${activeKeyVal}" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(bodyObj, null, 2)}'`;
-      }
+      return `curl -X GET "${fullUrl}" \\\n  -H "X-API-Key: ${activeKeyVal}"`;
     }
 
     if (docLang === 'js') {
-      if (method === 'GET') {
-        const isBinary = ['screenshot', 'element_screenshot', 'pdf', 'html_pdf'].includes(pgAction);
-        return `// Fetch request using modern JavaScript
+      return `// Fetch request using modern JavaScript
 fetch("${fullUrl}", {
   headers: {
     "X-API-Key": "${activeKeyVal}"
   }
 })
-  .then(res => ${isBinary ? 'res.blob()' : 'res.json()'})
+  .then(res => res.json())
   .then(data => {
     console.log(data);
   })
   .catch(err => console.error(err));`;
-      } else {
-        return `// Send JSON POST request
-fetch("${API_BASE}${path}", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "X-API-Key": "${activeKeyVal}"
-  },
-  body: JSON.stringify(${JSON.stringify(bodyObj, null, 2)})
-})
-  .then(res => res.json())
-  .then(data => console.log(data))
-  .catch(err => console.error(err));`;
-      }
     }
 
     if (docLang === 'python') {
-      if (method === 'GET') {
-        const isBinary = ['screenshot', 'element_screenshot', 'pdf', 'html_pdf'].includes(pgAction);
-        const queryParamsPython = queryParams ? `, params=${JSON.stringify(
-          Object.fromEntries(new URLSearchParams(queryParams)), null, 2
-        ).replace(/\n/g, '\n  ')}` : '';
-        
-        return `import requests
+      return `import requests
 
-url = "${API_BASE}${path}"
+url = "${fullUrl}"
 headers = {
     "X-API-Key": "${activeKeyVal}"
 }
 
-response = requests.get(url, headers=headers${queryParamsPython})
+response = requests.get(url, headers=headers)
 if response.status_code == 200:
-    ${isBinary ? 'with open("result.bin", "wb") as f:\n        f.write(response.content)\n    print("Binary content saved.")' : 'data = response.json()\n    print(data)'}
+    data = response.json()
+    print(data)
 else:
     print("Error:", response.status_code, response.text)`;
-      } else {
-        return `import requests
-
-url = "${API_BASE}${path}"
-headers = {
-    "Content-Type": "application/json",
-    "X-API-Key": "${activeKeyVal}"
-}
-data = ${JSON.stringify(bodyObj, null, 4).replace(/\n/g, '\n')}
-
-response = requests.post(url, headers=headers, json=data)
-if response.status_code == 200:
-    print(response.json())
-else:
-    print("Error:", response.status_code, response.text)`;
-      }
     }
 
     return '';
@@ -655,7 +483,7 @@ else:
         <div className="card auth-card card-glow">
           <div className="flex-center mb-3">
             <span className="logo" style={{ marginBottom: 0 }}>
-              <Zap style={{ color: 'var(--secondary)' }} /> OmniScrape API
+              <Zap style={{ color: 'var(--secondary)' }} /> LeadGlass API
             </span>
           </div>
 
@@ -736,7 +564,7 @@ else:
       <aside className="sidebar">
         <div className="logo">
           <Zap size={22} style={{ color: 'var(--secondary)', fill: 'var(--secondary)' }} />
-          <span>OmniScrape API</span>
+          <span>LeadGlass API</span>
         </div>
 
         <ul className="menu-list" style={{ flexGrow: 1 }}>
@@ -872,15 +700,15 @@ else:
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     >
                       <defs>
-                        <linearGradient id="colorScrape" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient id="colorVerify" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4}/>
                           <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.01}/>
                         </linearGradient>
-                        <linearGradient id="colorScreenshot" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient id="colorEnrich" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="var(--secondary)" stopOpacity={0.4}/>
                           <stop offset="95%" stopColor="var(--secondary)" stopOpacity={0.01}/>
                         </linearGradient>
-                        <linearGradient id="colorPdf" x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient id="colorPhone" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="var(--success)" stopOpacity={0.4}/>
                           <stop offset="95%" stopColor="var(--success)" stopOpacity={0.01}/>
                         </linearGradient>
@@ -892,9 +720,9 @@ else:
                         contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                       />
                       <Legend wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }} />
-                      <Area type="monotone" dataKey="Scrape" stroke="var(--primary)" fillOpacity={1} fill="url(#colorScrape)" />
-                      <Area type="monotone" dataKey="Screenshot" stroke="var(--secondary)" fillOpacity={1} fill="url(#colorScreenshot)" />
-                      <Area type="monotone" dataKey="PDF" stroke="var(--success)" fillOpacity={1} fill="url(#colorPdf)" />
+                      <Area type="monotone" dataKey="Verify" stroke="var(--primary)" fillOpacity={1} fill="url(#colorVerify)" />
+                      <Area type="monotone" dataKey="Enrich" stroke="var(--secondary)" fillOpacity={1} fill="url(#colorEnrich)" />
+                      <Area type="monotone" dataKey="Phone" stroke="var(--success)" fillOpacity={1} fill="url(#colorPhone)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -1120,131 +948,53 @@ else:
                         fontSize: '0.85rem'
                       }}
                     >
-                      <optgroup label="Core Scraping & Extraction">
-                        <option value="scrape">Webpage to Markdown (RAG)</option>
-                        <option value="selector">Element Selector Extraction</option>
-                        <option value="raw">Raw HTML Scraper</option>
-                        <option value="metadata">SEO Metadata Extractor</option>
-                        <option value="status">SSL & Domain Auditor</option>
+                      <optgroup label="Verifications">
+                        <option value="verify_email">Verify Email Deliverability</option>
+                        <option value="verify_phone">Validate Phone Formats</option>
                       </optgroup>
-                      <optgroup label="Media & Generation">
-                        <option value="screenshot">Capture Webpage Screenshot</option>
-                        <option value="element_screenshot">Capture Element Screenshot</option>
-                        <option value="pdf">Convert Webpage to PDF</option>
-                        <option value="html_pdf">Convert HTML to PDF</option>
-                      </optgroup>
-                      <optgroup label="Advanced Scrapes & Lead Gen">
-                        <option value="emails">Extract Emails & Social Handles</option>
-                        <option value="links">Extract Page Links</option>
-                        <option value="table">Parse Tables to JSON</option>
-                      </optgroup>
-                      <optgroup label="Search & Discovery">
-                        <option value="search">Organic Web Search (SERP)</option>
-                        <option value="images">Organic Image Search</option>
-                        <option value="news">Google News Search</option>
-                        <option value="suggest">Keyword Autocomplete Suggestions</option>
+                      <optgroup label="Enrichments & B2B">
+                        <option value="enrich_domain">Enrich Domain Profile</option>
+                        <option value="enrich_email">Enrich Email & Company Profile</option>
                       </optgroup>
                     </select>
                   </div>
 
-                  {/* Target URL */}
-                  {!['search', 'images', 'news', 'suggest', 'html_pdf'].includes(pgAction) && (
+                  {/* Target Email */}
+                  {['verify_email', 'enrich_email'].includes(pgAction) && (
                     <div className="flex-col" style={{ gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target URL</label>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target Email Address</label>
                       <input
-                        type="url"
-                        value={pgUrl}
-                        onChange={(e) => setPgUrl(e.target.value)}
-                        placeholder="e.g. https://news.ycombinator.com"
+                        type="email"
+                        value={pgEmail}
+                        onChange={(e) => setPgEmail(e.target.value)}
+                        placeholder="e.g. alex.jones@stripe.com"
                       />
                     </div>
                   )}
 
-                  {/* Search Query */}
-                  {['search', 'images', 'news', 'suggest'].includes(pgAction) && (
+                  {/* Target Domain */}
+                  {pgAction === 'enrich_domain' && (
                     <div className="flex-col" style={{ gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search Query (q)</label>
-                      <input
-                        type="text"
-                        value={pgQuery}
-                        onChange={(e) => setPgQuery(e.target.value)}
-                        placeholder="e.g. web scraping"
-                      />
-                    </div>
-                  )}
-
-                  {/* CSS Selector */}
-                  {['selector', 'element_screenshot'].includes(pgAction) && (
-                    <div className="flex-col" style={{ gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>CSS Selector</label>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target Domain Name</label>
                       <input
                         type="text"
-                        value={pgSelector}
-                        onChange={(e) => setPgSelector(e.target.value)}
-                        placeholder="e.g. article.post-content or #main-content"
+                        value={pgDomain}
+                        onChange={(e) => setPgDomain(e.target.value)}
+                        placeholder="e.g. stripe.com"
                       />
                     </div>
                   )}
 
-                  {/* HTML Content */}
-                  {pgAction === 'html_pdf' && (
+                  {/* Target Phone */}
+                  {pgAction === 'verify_phone' && (
                     <div className="flex-col" style={{ gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Raw HTML Content</label>
-                      <textarea
-                        value={pgHtml}
-                        onChange={(e) => setPgHtml(e.target.value)}
-                        placeholder="<h1>Compile me to PDF</h1>"
-                        rows={6}
-                        style={{
-                          backgroundColor: 'var(--bg-main)',
-                          color: '#fff',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px',
-                          padding: '0.6rem',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.8rem'
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Results Count */}
-                  {['search', 'images', 'news'].includes(pgAction) && (
-                    <div className="flex-col" style={{ gap: '0.25rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Results Count (num)</label>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Target Phone Number</label>
                       <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={pgNum}
-                        onChange={(e) => setPgNum(parseInt(e.target.value, 10) || 10)}
+                        type="text"
+                        value={pgPhone}
+                        onChange={(e) => setPgPhone(e.target.value)}
+                        placeholder="e.g. +14155552671"
                       />
-                    </div>
-                  )}
-
-                  {/* Checkboxes */}
-                  {['scrape', 'selector', 'raw', 'screenshot', 'element_screenshot'].includes(pgAction) && (
-                    <div className="flex-row mt-1" style={{ gap: '1.25rem', justifyContent: 'flex-start' }}>
-                      {['scrape', 'selector', 'raw', 'screenshot'].includes(pgAction) && (
-                        <label className="flex-row" style={{ gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={pgBlockMedia}
-                            onChange={(e) => setPgBlockMedia(e.target.checked)}
-                          />
-                          <span>Block Heavy Media/Styles</span>
-                        </label>
-                      )}
-                      {pgAction === 'screenshot' && (
-                        <label className="flex-row" style={{ gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={pgFullPage}
-                            onChange={(e) => setPgFullPage(e.target.checked)}
-                          />
-                          <span>Full Page Screenshot</span>
-                        </label>
-                      )}
                     </div>
                   )}
 
@@ -1286,7 +1036,7 @@ else:
                   <div className="flex-center" style={{ flexGrow: 1, flexDirection: 'column', gap: '0.5rem' }}>
                     <Loader2 className="animate-spin" size={32} style={{ color: 'var(--secondary)' }} />
                     <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                      Launching headless Chromium sandbox...
+                      Querying LeadGlass B2B database...
                     </p>
                   </div>
                 ) : pgResult ? (
@@ -1302,7 +1052,7 @@ else:
                         fontSize: '0.75rem',
                         fontFamily: 'var(--font-mono)',
                         border: '1px solid var(--border-color)',
-                        maxHeight: '100px',
+                        maxHeight: '80px',
                         overflowY: 'auto'
                       }}>
                         {Object.entries(pgResponseHeaders).map(([k, v]) => `${k}: ${v}`).join('\n')}
@@ -1311,50 +1061,130 @@ else:
 
                     {/* Result Content renderer */}
                     <div style={{ flexGrow: 1 }}>
-                      <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }} className="mb-1">Response Payload</h4>
+                      <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }} className="mb-1">Response Visual Profile</h4>
                       
-                      {pgResult.type === 'image' && (
-                        <div className="preview-pane" style={{ display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
-                          <img
-                            src={pgResult.url}
-                            alt="Scraped Screenshot"
-                            style={{ maxWidth: '100%', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-                          />
-                        </div>
-                      )}
-
-                      {pgResult.type === 'pdf' && (
-                        <div className="preview-pane flex-center flex-col" style={{ gap: '1rem' }}>
-                          <FileText size={48} style={{ color: 'var(--secondary)' }} />
-                          <p style={{ textAlign: 'center', fontSize: '0.9rem' }}>
-                            PDF document successfully rendered.
-                          </p>
-                          <a href={pgResult.url} download="page.pdf" className="btn btn-primary">
-                            Download Generated PDF
-                          </a>
-                        </div>
-                      )}
-
-                      {pgResult.type === 'html' && (
-                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pgResult.content}</pre>
-                        </div>
-                      )}
-
-                      {/* Custom Markdown view for scraper responses */}
-                      {!pgResult.type && (pgAction === 'scrape' || pgAction === 'selector') && pgResult.markdown && (
-                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                          <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
-                            <strong>Title:</strong> {pgResult.title || 'Untitled'}
+                      {/* Email Verification Card */}
+                      {pgAction === 'verify_email' && pgResult.email && (
+                        <div className="preview-pane flex-col" style={{ gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                          <div className="flex-between">
+                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{pgResult.email}</span>
+                            <span className={`badge ${pgResult.isValid ? 'badge-green' : 'badge-red'}`}>
+                              {pgResult.isValid ? 'Deliverable' : 'Undeliverable'}
+                            </span>
                           </div>
-                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{pgResult.markdown}</pre>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                            <div><strong>Domain:</strong> {pgResult.domain}</div>
+                            <div><strong>User Prefix:</strong> {pgResult.user}</div>
+                            <div><strong>Disposable Domain:</strong> {pgResult.isDisposable ? '🔴 Yes' : '🟢 No'}</div>
+                            <div><strong>Role Account:</strong> {pgResult.isRoleAccount ? '⚠️ Yes' : '🟢 No'}</div>
+                          </div>
+                          {pgResult.mxRecords && pgResult.mxRecords.length > 0 && (
+                            <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                              <strong>Resolved MX Exchange:</strong>
+                              <pre style={{ margin: '0.2rem 0 0 0', padding: '0.25rem', backgroundColor: 'var(--bg-main)', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>
+                                {pgResult.mxRecords.slice(0, 2).join('\n')}
+                              </pre>
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {/* General pretty JSON preview for all other endpoints */}
-                      {!pgResult.type && !((pgAction === 'scrape' || pgAction === 'selector') && pgResult.markdown) && (
-                        <div className="preview-pane" style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{JSON.stringify(pgResult, null, 2)}</pre>
+                      {/* Domain Enrichment Card */}
+                      {pgAction === 'enrich_domain' && pgResult.domain && (
+                        <div className="preview-pane flex-col" style={{ gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                          <div className="flex-row" style={{ justifyContent: 'flex-start', gap: '0.75rem' }}>
+                            {pgResult.logo && (
+                              <img src={pgResult.logo} alt={pgResult.name} style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#fff', padding: '2px' }} onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+                            )}
+                            <div className="flex-col" style={{ alignItems: 'flex-start' }}>
+                              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{pgResult.name}</h3>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pgResult.domain}</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                            {pgResult.description}
+                          </div>
+                          {pgResult.techStack && pgResult.techStack.length > 0 && (
+                            <div className="flex-col" style={{ gap: '0.25rem' }}>
+                              <strong style={{ fontSize: '0.75rem' }}>Detected Technologies:</strong>
+                              <div className="flex-row" style={{ flexWrap: 'wrap', gap: '0.25rem', justifyContent: 'flex-start' }}>
+                                {pgResult.techStack.map((tech: string, i: number) => (
+                                  <span key={i} className="badge badge-blue" style={{ fontSize: '0.7rem' }}>{tech}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {pgResult.socials && Object.values(pgResult.socials).some(Boolean) && (
+                            <div className="flex-col" style={{ gap: '0.25rem' }}>
+                              <strong style={{ fontSize: '0.75rem' }}>Social Networks:</strong>
+                              <div className="flex-row" style={{ gap: '0.5rem', justifyContent: 'flex-start' }}>
+                                {Object.entries(pgResult.socials as Record<string, any>).map(([key, val]) => {
+                                  const urlVal = val as string;
+                                  if (!urlVal) return null;
+                                  return (
+                                    <a key={key} href={urlVal} target="_blank" rel="noopener noreferrer" className="badge badge-purple" style={{ fontSize: '0.7rem', textTransform: 'capitalize' }}>
+                                      {key}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Email Enrichment Card */}
+                      {pgAction === 'enrich_email' && pgResult.email && (
+                        <div className="preview-pane flex-col" style={{ gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                          <div className="flex-col" style={{ gap: '0.25rem' }}>
+                            <div className="flex-between">
+                              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{pgResult.fullName || pgResult.firstName || 'Enriched Profile'}</h3>
+                              <span className={`badge ${pgResult.verification?.deliverable === 'deliverable' ? 'badge-green' : 'badge-red'}`}>
+                                {pgResult.verification?.deliverable || 'Unknown'}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pgResult.email}</span>
+                          </div>
+                          {pgResult.company ? (
+                            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
+                              <div className="flex-row" style={{ justifyContent: 'flex-start', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                {pgResult.company.logo && (
+                                  <img src={pgResult.company.logo} alt={pgResult.company.name} style={{ width: '24px', height: '24px', borderRadius: '4px', backgroundColor: '#fff' }} onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+                                )}
+                                <strong style={{ fontSize: '0.85rem' }}>{pgResult.company.name}</strong>
+                              </div>
+                              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: '0 0 0.5rem 0' }}>{pgResult.company.description}</p>
+                              {pgResult.company.techStack && pgResult.company.techStack.length > 0 && (
+                                <div className="flex-row" style={{ flexWrap: 'wrap', gap: '0.25rem', justifyContent: 'flex-start' }}>
+                                  {pgResult.company.techStack.slice(0, 4).map((tech: string, i: number) => (
+                                    <span key={i} className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{tech}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              No corporate company profile could be resolved for this email domain.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Phone Verification Card */}
+                      {pgAction === 'verify_phone' && pgResult.phone && (
+                        <div className="preview-pane flex-col" style={{ gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                          <div className="flex-between">
+                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{pgResult.phone}</span>
+                            <span className={`badge ${pgResult.isValid ? 'badge-green' : 'badge-red'}`}>
+                              {pgResult.isValid ? 'Valid Format' : 'Invalid'}
+                            </span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                            <div><strong>Country:</strong> {pgResult.countryName} ({pgResult.countryCode})</div>
+                            <div><strong>Carrier:</strong> {pgResult.carrier}</div>
+                            <div><strong>Clean E.164:</strong> {pgResult.phone}</div>
+                            <div><strong>Formatted View:</strong> {pgResult.formatted}</div>
+                          </div>
                         </div>
                       )}
 
@@ -1364,8 +1194,27 @@ else:
                           <pre className="mt-1" style={{ whiteSpace: 'pre-wrap' }}>{pgResult.message}</pre>
                         </div>
                       )}
-                    </div>
 
+                      {/* Raw JSON display fallback */}
+                      <div className="mt-2">
+                        <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }} className="mb-1">Raw JSON Payload</h4>
+                        <pre style={{
+                          backgroundColor: 'var(--bg-main)',
+                          padding: '0.5rem',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontFamily: 'var(--font-mono)',
+                          border: '1px solid var(--border-color)',
+                          maxHeight: '150px',
+                          overflowY: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all'
+                        }}>
+                          {JSON.stringify(pgResult, null, 2)}
+                        </pre>
+                      </div>
+
+                    </div>
                   </div>
                 ) : (
                   <div className="flex-center" style={{ flexGrow: 1, color: 'var(--text-muted)', textAlign: 'center', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1386,29 +1235,17 @@ else:
         {activeTab === 'docs' && (
           <div>
             <h1>Developer Documentation</h1>
-            <p className="mb-3">Integrate OmniScrape API endpoints directly into your codebase. View simple integration scripts.</p>
+            <p className="mb-3">Integrate LeadGlass B2B validation and enrichment APIs directly into your software. Pay-as-you-go REST interfaces.</p>
 
             <div className="grid-1-2">
               <div className="card flex-col" style={{ height: 'fit-content', gap: '1.25rem' }}>
                 <h3>Endpoints Reference</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '480px', overflowY: 'auto', paddingRight: '0.25rem' }}>
                   {[
-                    { id: 'scrape', method: 'GET', path: '/v1/scrape', desc: 'Webpage to Markdown (RAG Ingestion)' },
-                    { id: 'selector', method: 'POST', path: '/v1/scrape', desc: 'Isolate CSS Element to Markdown' },
-                    { id: 'raw', method: 'GET', path: '/v1/scrape/raw', desc: 'Raw HTML Code Grabber' },
-                    { id: 'metadata', method: 'GET', path: '/v1/scrape/metadata', desc: 'SEO & OpenGraph Tags Extractor' },
-                    { id: 'status', method: 'GET', path: '/v1/scrape/status', desc: 'SSL & Domain Performance Auditor' },
-                    { id: 'screenshot', method: 'GET', path: '/v1/screenshot', desc: 'Capture Layout Screenshot (PNG)' },
-                    { id: 'element_screenshot', method: 'GET', path: '/v1/screenshot/element', desc: 'Crop Screenshot to CSS Selector' },
-                    { id: 'pdf', method: 'GET', path: '/v1/pdf', desc: 'Convert Webpage layout to PDF' },
-                    { id: 'html_pdf', method: 'POST', path: '/v1/pdf', desc: 'Compile Raw HTML String to PDF' },
-                    { id: 'emails', method: 'GET', path: '/v1/scrape/emails', desc: 'B2B Leads Email & Social Extractor' },
-                    { id: 'links', method: 'GET', path: '/v1/scrape/links', desc: 'Extract and Audit Hyperlinks' },
-                    { id: 'table', method: 'GET', path: '/v1/scrape/table', desc: 'Parse HTML Tables into JSON Arrays' },
-                    { id: 'search', method: 'GET', path: '/v1/search', desc: 'Organic Google Search (SERP)' },
-                    { id: 'images', method: 'GET', path: '/v1/search/images', desc: 'Google/Bing Organic Image Search' },
-                    { id: 'news', method: 'GET', path: '/v1/search/news', desc: 'Scrape Google News Listings' },
-                    { id: 'suggest', method: 'GET', path: '/v1/search/suggest', desc: 'Google Autocomplete Suggestions' },
+                    { id: 'verify_email', method: 'GET', path: '/v1/verify/email', desc: 'Verify email delivery & SMTP mailbox existence' },
+                    { id: 'enrich_domain', method: 'GET', path: '/v1/enrich/domain', desc: 'Profile domain descriptions, logos, and tech stack tags' },
+                    { id: 'enrich_email', method: 'GET', path: '/v1/enrich/email', desc: 'Enrich emails with first/last names and company metadata' },
+                    { id: 'verify_phone', method: 'GET', path: '/v1/verify/phone', desc: 'Validate international phone numbers & mock carrier' },
                   ].map((ep) => (
                     <div
                       key={ep.id}
@@ -1524,16 +1361,16 @@ else:
                 <div>
                   <span className="badge badge-blue">Developer Trial</span>
                   <div className="price">$0<span> / month</span></div>
-                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>Perfect for prototyping and light scraping requirements.</p>
+                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>Perfect for prototyping and basic user email checks.</p>
                   
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '1rem 0' }}></div>
                   
                   <ul className="pricing-features">
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 100 requests/month</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Scraping & Markdown</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Latency metrics access</li>
-                    <li style={{ opacity: 0.4 }}><CheckCircle size={14} /> Full Screenshot rendering</li>
-                    <li style={{ opacity: 0.4 }}><CheckCircle size={14} /> A4 PDF layouts</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Email Syntax Verification</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Phone Format Validation</li>
+                    <li style={{ opacity: 0.4 }}><CheckCircle size={14} /> DNS MX Record resolves</li>
+                    <li style={{ opacity: 0.4 }}><CheckCircle size={14} /> Domain tech profiling</li>
                   </ul>
                 </div>
                 <button
@@ -1550,15 +1387,15 @@ else:
                 <div>
                   <span className="badge badge-purple">Starter Plan</span>
                   <div className="price">$19<span> / month</span></div>
-                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>For developers scaling simple applications and AI ingestion pipelines.</p>
+                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>For developers scaling simple lead forms and analytics dashboards.</p>
                   
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '1rem 0' }}></div>
                   
                   <ul className="pricing-features">
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 10,000 requests/month</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Markdown + Screenshots</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Standard response speeds</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> PDF file printing</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> DNS MX record checks</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Domain Profile Scraping</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Max 2 active API keys</li>
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Email support channel</li>
                   </ul>
                 </div>
@@ -1576,15 +1413,15 @@ else:
                 <div>
                   <span className="badge badge-green">Growth Tier</span>
                   <div className="price">$49<span> / month</span></div>
-                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>Ideal for growing SaaS applications and scraping workflows.</p>
+                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>Ideal for growing SaaS applications and marketing automations.</p>
                   
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '1rem 0' }}></div>
                   
                   <ul className="pricing-features">
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 50,000 requests/month</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Personal Email Enrichment</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Corporate Tech Stack Audits</li>
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Unlimited active keys</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Premium proxy rotation</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Screenshots + PDFs</li>
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Priority ticket response</li>
                   </ul>
                 </div>
@@ -1602,14 +1439,14 @@ else:
                 <div>
                   <span className="badge badge-gold">Enterprise Scale</span>
                   <div className="price">$149<span> / month</span></div>
-                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>For heavy data collection and enterprise-grade LLM applications.</p>
+                  <p style={{ fontSize: '0.85rem', margin: '0.5rem 0' }}>For heavy data warehouses and custom CRM enrichment workflows.</p>
                   
                   <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '1rem 0' }}></div>
                   
                   <ul className="pricing-features">
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 250,000 requests/month</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Concurrent request lines</li>
-                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Dedicated proxy networks</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> High-priority enrichment lines</li>
+                    <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> Dedicated lookup proxies</li>
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 99.9% SLA uptime guarantee</li>
                     <li><CheckCircle size={14} style={{ color: 'var(--success)' }} /> 24/7 Slack support channel</li>
                   </ul>

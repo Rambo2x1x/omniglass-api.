@@ -1,172 +1,69 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * Express middleware to enforce tier-specific feature limits based on the RapidAPI subscription header.
+ * Express middleware to enforce plan-specific limits for LeadGlass B2B API.
  */
 export function enforceTierLimits(req: Request, res: Response, next: NextFunction): void {
-  // RapidAPI passes plan level in X-RapidAPI-Subscription (e.g. "BASIC", "PRO", "ULTRA", "MEGA")
-  // Default to "BASIC" if the header is missing (e.g. for basic local dev without header)
   const subscription = (req.header('X-RapidAPI-Subscription') || 'BASIC').toUpperCase();
   const path = req.path;
 
   console.log(`[TierEnforcer] Request path: ${path}, Subscription Tier: ${subscription}`);
 
+  // Skip middleware checks for auth, keys, user dashboard endpoints
+  if (path.startsWith('/api/') || path === '/health') {
+    return next();
+  }
+
   // ==========================================================
-  // TIER 1: BASIC (Free) Restrictions
+  // TIER 1: BASIC (Free / FREE Plan)
   // ==========================================================
   if (subscription === 'BASIC' || subscription === 'FREE') {
-    // 1. Block PDF Rendering
-    if (path.startsWith('/v1/pdf')) {
+    // 1. Block Company Domain Enrichment
+    if (path.startsWith('/v1/enrich/domain')) {
       res.status(403).json({
         error: 'Feature Locked',
-        message: 'PDF generation is a premium feature. Please upgrade to the PRO or ULTRA plan to unlock A4 PDF vector rendering.'
+        message: 'Domain profile enrichment and tech stack identification are premium features. Please upgrade to the PRO plan to unlock.'
       });
       return;
     }
 
-    // 2. Block Custom Element Screenshots
-    if (path.startsWith('/v1/screenshot/element')) {
+    // 2. Block Combined Email Enrichment
+    if (path.startsWith('/v1/enrich/email')) {
       res.status(403).json({
         error: 'Feature Locked',
-        message: 'Segment/Element screenshots are locked. Please upgrade to the PRO plan to crop screenshots to specific CSS elements.'
+        message: 'B2B contact and email profile enrichment is locked. Please upgrade to the ULTRA plan to enrich emails and fetch company profiles.'
       });
       return;
     }
 
-    // 3. Block Email/Social Extraction (Lead Gen)
-    if (path.startsWith('/v1/scrape/emails')) {
-      res.status(403).json({
-        error: 'Feature Locked',
-        message: 'B2B Contact extraction (emails, phones, socials) is a premium feature. Please upgrade to the ULTRA plan to unlock lead generation scraper.'
-      });
-      return;
-    }
-
-    // 3.5. Block Raw HTML Scraper
-    if (path.startsWith('/v1/scrape/raw')) {
-      res.status(403).json({
-        error: 'Feature Locked',
-        message: 'Raw HTML source code scraping is a premium feature. Please upgrade to the PRO plan to bypass bot blocks and fetch raw source HTML.'
-      });
-      return;
-    }
-
-    // 4. Block CSS Selector Extraction in /v1/scrape
-    const selector = req.query.selector || req.body?.selector;
-    if (selector) {
-      res.status(403).json({
-        error: 'Feature Locked',
-        message: 'CSS Selector isolating is a premium feature. Please upgrade to the PRO plan to scrape specific elements.'
-      });
-      return;
-    }
-
-    // 5. Restrict wait options
-    if (req.query.wait) {
-      const waitTime = parseInt(req.query.wait as string, 10);
-      if (waitTime > 1000) {
-        req.query.wait = '1000';
-      }
-    }
-    if (req.body && req.body.wait) {
-      const waitTime = parseInt(req.body.wait, 10);
-      if (waitTime > 1000) {
-        req.body.wait = 1000;
-      }
-    }
-
-    // 6. Restrict Search results count (always enforce limit on search endpoints)
-    if (path.startsWith('/v1/search')) {
-      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
-      if (numValQuery > 3) {
-        req.query.num = '3';
-      }
-      
+    // 3. For email verification, intercept and enforce simple syntax checking only (no DNS resolves)
+    if (path.startsWith('/v1/verify/email')) {
+      // We pass a query flag to notify downstream controllers to skip MX/SMTP resolves if desired
+      req.query.syntaxOnly = 'true';
       if (req.body) {
-        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
-        if (numValBody > 3) {
-          req.body.num = 3;
-        }
+        req.body.syntaxOnly = true;
       }
     }
   }
 
   // ==========================================================
-  // TIER 2: PRO Restrictions
+  // TIER 2: PRO
   // ==========================================================
   if (subscription === 'PRO') {
-    // 1. Block Lead Gen endpoint
-    if (path.startsWith('/v1/scrape/emails')) {
+    // 1. Block Combined Contact Email Enrichment (requires ULTRA)
+    if (path.startsWith('/v1/enrich/email')) {
       res.status(403).json({
         error: 'Feature Locked',
-        message: 'B2B Lead Generation Contact scraping is locked on the PRO plan. Please upgrade to the ULTRA plan to unlock email/social data extraction.'
+        message: 'Individual B2B contact profile and email enrichment is locked on the PRO plan. Please upgrade to the ULTRA plan to match personal name logs and company profiles.'
       });
       return;
     }
-
-    // 2. Restrict wait options (max 5000ms)
-    if (req.query.wait) {
-      const waitTime = parseInt(req.query.wait as string, 10);
-      if (waitTime > 5000) {
-        req.query.wait = '5000';
-      }
-    }
-    if (req.body && req.body.wait) {
-      const waitTime = parseInt(req.body.wait, 10);
-      if (waitTime > 5000) {
-        req.body.wait = 5000;
-      }
-    }
-
-    // 3. Restrict Search results count (always enforce limit on search endpoints)
-    if (path.startsWith('/v1/search')) {
-      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
-      if (numValQuery > 10) {
-        req.query.num = '10';
-      }
-      
-      if (req.body) {
-        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
-        if (numValBody > 10) {
-          req.body.num = 10;
-        }
-      }
-    }
   }
 
   // ==========================================================
-  // TIER 3: ULTRA / MEGA Restrictions (Full Access)
+  // TIER 3: ULTRA / MEGA (Full Access)
   // ==========================================================
-  if (subscription === 'ULTRA' || subscription === 'MEGA') {
-    // Restrict wait options to max 15000ms (to prevent hanging processes)
-    if (req.query.wait) {
-      const waitTime = parseInt(req.query.wait as string, 10);
-      if (waitTime > 15000) {
-        req.query.wait = '15000';
-      }
-    }
-    if (req.body && req.body.wait) {
-      const waitTime = parseInt(req.body.wait, 10);
-      if (waitTime > 15000) {
-        req.body.wait = 15000;
-      }
-    }
-
-    // Restrict Search results count to max 50 (always enforce limit on search endpoints)
-    if (path.startsWith('/v1/search')) {
-      const numValQuery = req.query.num ? parseInt(req.query.num as string, 10) : 10;
-      if (numValQuery > 50) {
-        req.query.num = '50';
-      }
-      
-      if (req.body) {
-        const numValBody = req.body.num ? parseInt(req.body.num, 10) : 10;
-        if (numValBody > 50) {
-          req.body.num = 50;
-        }
-      }
-    }
-  }
-
+  // Allow all paths: /v1/verify/email, /v1/enrich/domain, /v1/enrich/email, /v1/verify/phone
+  
   next();
 }
