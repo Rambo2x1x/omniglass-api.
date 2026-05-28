@@ -11,18 +11,25 @@ Below you will find detailed endpoint specifications, configuration parameters, 
 2. [Subscription Tier & Limits](#subscription-tier--limits)
 3. [Endpoints](#endpoints)
    - [Group 1: Core Scraping & Extraction](#group-1-core-scraping--extraction)
-     - [Scrape Webpage to Markdown (`GET/POST /v1/scrape`)](#scrape-webpage-to-markdown-getpost-v1scrape)
+     - [Scrape Webpage to Markdown (`GET /v1/scrape`)](#scrape-webpage-to-markdown-get-v1scrape)
+     - [Scrape Specific Element Selector (`POST /v1/scrape`)](#scrape-specific-element-selector-post-v1scrape)
+     - [Scrape Raw HTML Source (`GET/POST /v1/scrape/raw`)](#scrape-raw-html-source-getpost-v1scraperaw)
+     - [Extract SEO Metadata Only (`GET/POST /v1/scrape/metadata`)](#extract-seo-metadata-only-getpost-v1scrapemetadata)
+     - [SSL & Domain Auditor (`GET /v1/scrape/status`)](#ssl--domain-auditor-get-v1scrapestatus)
    - [Group 2: Media & Generation](#group-2-media--generation)
      - [Capture Webpage Screenshot (`GET /v1/screenshot`)](#capture-webpage-screenshot-get-v1screenshot)
      - [Capture Element Screenshot (`GET /v1/screenshot/element`)](#capture-element-screenshot-get-v1screenshotelement)
-     - [Print PDF Document (`GET/POST /v1/pdf`)](#print-pdf-document-getpost-v1pdf)
+     - [Convert Webpage to PDF (`GET /v1/pdf`)](#convert-webpage-to-pdf-get-v1pdf)
+     - [Convert HTML to PDF (`POST /v1/pdf`)](#convert-html-to-pdf-post-v1pdf)
    - [Group 3: Advanced Scrapes & Lead Gen](#group-3-advanced-scrapes--lead-gen)
      - [Extract Emails & Social Handles (`GET/POST /v1/scrape/emails`)](#extract-emails--social-handles-getpost-v1scrapeemails)
      - [Extract Page Links (`GET/POST /v1/scrape/links`)](#extract-page-links-getpost-v1scrapelinks)
      - [Parse Tables to JSON (`GET/POST /v1/scrape/table`)](#parse-tables-to-json-getpost-v1scrapetable)
    - [Group 4: Search & Discovery](#group-4-search--discovery)
-     - [Organic Web Search (`GET/POST /v1/search`)](#organic-web-search-getpost-v1search)
-     - [Organic Image Search (`GET/POST /v1/search/images`)](#organic-image-search-getpost-v1searchimages)
+     - [Organic Web Search (`GET /v1/search`)](#organic-web-search-get-v1search)
+     - [Organic Image Search (`GET /v1/search/images`)](#organic-image-search-get-v1searchimages)
+     - [Google News Search (`GET/POST /v1/search/news`)](#google-news-search-getpost-v1searchnews)
+     - [Keyword Autocomplete Suggestions (`GET /v1/search/suggest`)](#keyword-autocomplete-suggestions-get-v1searchsuggest)
 
 ---
 
@@ -44,10 +51,11 @@ Our backend automatically enforces plan-specific tier limitations to incentivize
 | Feature / Limit | BASIC (Free) | PRO | ULTRA / MEGA |
 |---|---|---|---|
 | **Markdown Scrape (`/v1/scrape`)** | Unlocked (No selector) | Unlocked (Selector enabled) | Unlocked (Selector enabled) |
+| **Raw HTML Scraper (`/raw`)** | ❌ Locked | Unlocked | Unlocked |
 | **PDF Renderer (`/v1/pdf`)** | ❌ Locked | Unlocked | Unlocked |
 | **Element Screenshot (`/element`)** | ❌ Locked | Unlocked | Unlocked |
 | **Lead Gen (`/v1/scrape/emails`)** | ❌ Locked | ❌ Locked | Unlocked |
-| **Max Web Search Results (`num`)** | Max 3 | Max 10 | Max 50 |
+| **Max Web/News/Image Search** | Max 3 | Max 10 | Max 50 |
 | **Max Render Wait Time (`wait`)** | Max 1,000ms | Max 5,000ms | Max 15,000ms |
 
 ---
@@ -56,45 +64,42 @@ Our backend automatically enforces plan-specific tier limitations to incentivize
 
 ### Group 1: Core Scraping & Extraction
 
-#### Scrape Webpage to Markdown (`GET/POST /v1/scrape`)
+#### Scrape Webpage to Markdown (`GET /v1/scrape`)
 Extracts clean, readable content (Markdown format) and structured SEO metadata from any page.
+
+* **Method:** `GET`
+* **Query Parameters:**
+  - `url` (String, Required): Target website URL.
+  - `blockMedia` (Boolean, Optional): Automatically blocks images, fonts, and stylesheets to save bandwidth. Defaults to `true`.
+
+#### Scrape Specific Element Selector (`POST /v1/scrape`)
+Extracts content matching a CSS selector. *(Locked on BASIC)*
+
+* **Method:** `POST`
+* **JSON Body Parameters:**
+  - `url` (String, Required): Target website URL.
+  - `selector` (String, Required): A CSS selector (e.g. `article.post-content`).
+
+#### Scrape Raw HTML Source (`GET/POST /v1/scrape/raw`)
+Bypasses bot blocks and returns the raw HTML source code of the webpage. *(Locked on BASIC)*
 
 * **Method:** `GET` or `POST`
 * **Query / JSON Body Parameters:**
-  - `url` (String, Required): The target website URL.
-  - `selector` (String, Optional): A CSS selector (e.g., `#main-content`, `article.post`) to extract *only* a specific DOM node. *(Locked on BASIC)*
-  - `wait` (Number, Optional): Custom wait time in milliseconds.
-  - `waitSelector` (String, Optional): Wait for a specific CSS element to render before scraping.
-  - `blockMedia` (Boolean, Optional): Automatically blocks images, fonts, and stylesheets to save bandwidth. Defaults to `true`.
+  - `url` (String, Required): Target website URL.
 
-##### Request Example (cURL):
-```bash
-curl --request POST \
-	--url 'https://omniscrape-api.p.rapidapi.com/v1/scrape' \
-	--header 'Content-Type: application/json' \
-	--header 'X-RapidAPI-Host: omniscrape-api.p.rapidapi.com' \
-	--header 'X-RapidAPI-Key: YOUR_RAPIDAPI_KEY' \
-	--data '{
-		"url": "https://example.com",
-		"blockMedia": true
-	}'
-```
+#### Extract SEO Metadata Only (`GET/POST /v1/scrape/metadata`)
+Extracts OpenGraph, Twitter Cards, SEO tags, and ld+json schemas without body download.
 
-##### Example JSON Response:
-```json
-{
-  "title": "Example Domain",
-  "description": "This domain is for use in illustrative examples in documents.",
-  "keywords": "",
-  "author": "",
-  "language": "en",
-  "ogImage": "",
-  "wordCount": 125,
-  "readingTimeMinutes": 1,
-  "markdown": "# Example Domain\n\nThis domain is for use in illustrative examples...",
-  "url": "https://example.com"
-}
-```
+* **Method:** `GET` or `POST`
+* **Query / JSON Body Parameters:**
+  - `url` (String, Required): Target website URL.
+
+#### SSL & Domain Auditor (`GET /v1/scrape/status`)
+Audits website status, measures DNS response time, and retrieves SSL certificate details.
+
+* **Method:** `GET`
+* **Query Parameters:**
+  - `url` (String, Required): Target webpage URL to check.
 
 ---
 
@@ -107,131 +112,85 @@ Generates premium, pixel-perfect PNG screenshots of any desktop web layout.
 * **Query Parameters:**
   - `url` (String, Required): Target website URL.
   - `fullPage` (Boolean, Optional): Captures the entire height of the site. Defaults to `true`.
-  - `wait` (Number, Optional): Custom wait time in milliseconds.
-  - `waitSelector` (String, Optional): Wait for a specific CSS element.
-  - `blockMedia` (Boolean, Optional): Defaults to `false`.
-
----
 
 #### Capture Element Screenshot (`GET /v1/screenshot/element`)
-Renders webpage and screenshots *only* the bounding box of a specific CSS selector (e.g. a chart, table, or login box). *(Locked on BASIC)*
+Renders webpage and screenshots *only* the bounding box of a specific CSS selector. *(Locked on BASIC)*
 
 * **Method:** `GET`
 * **Query Parameters:**
   - `url` (String, Required): Target website URL.
   - `selector` (String, Required): The CSS selector of the element to capture (e.g., `#chart-div`).
-  - `wait` (Number, Optional) / `waitSelector` (String, Optional).
 
-##### Request Example (cURL):
-```bash
-curl --request GET \
-	--url 'https://omniscrape-api.p.rapidapi.com/v1/screenshot/element?url=https%3A%2F%2Fexample.com&selector=h1' \
-	--header 'X-RapidAPI-Host: omniscrape-api.p.rapidapi.com' \
-	--header 'X-RapidAPI-Key: YOUR_RAPIDAPI_KEY' \
-	--output element.png
-```
+#### Convert Webpage to PDF (`GET /v1/pdf`)
+Renders dynamic webpages into print-optimized PDF documents. *(Locked on BASIC)*
 
----
-
-#### Print PDF Document (`GET/POST /v1/pdf`)
-Renders dynamic webpages or raw HTML snippets into print-optimized PDF documents. *(Locked on BASIC)*
-
-* **Method:** `GET` or `POST`
-* **GET Query Parameters:**
+* **Method:** `GET`
+* **Query Parameters:**
   - `url` (String, Required): Target webpage URL to download as PDF.
-* **POST JSON Body Parameters:**
-  - `url` (String, Optional): Target webpage URL.
-  - `html` (String, Optional): Direct raw HTML string to compile into a PDF.
+
+#### Convert HTML to PDF (`POST /v1/pdf`)
+Renders raw HTML snippets into PDF documents. *(Locked on BASIC)*
+
+* **Method:** `POST`
+* **JSON Body Parameters:**
+  - `html` (String, Required): Direct raw HTML string to compile into a PDF.
 
 ---
 
 ### Group 3: Advanced Scrapes & Lead Gen
 
 #### Extract Emails & Social Handles (`GET/POST /v1/scrape/emails`)
-Scans any page and extracts contact details including emails, phone numbers, and social media links (LinkedIn, Twitter, Facebook, Instagram, GitHub). *(Locked on BASIC and PRO)*
+Scans any page and extracts contact details including emails, phone numbers, and social media links. *(Locked on BASIC and PRO)*
 
 * **Method:** `GET` or `POST`
 * **Parameters:**
   - `url` (String, Required): Target webpage URL.
-
-##### Example JSON Response:
-```json
-{
-  "emails": ["info@company.com", "sales@company.com"],
-  "phones": ["+1-555-0199"],
-  "socials": {
-    "linkedin": ["https://linkedin.com/company/example"],
-    "twitter": ["https://twitter.com/example"],
-    "facebook": ["https://facebook.com/example"],
-    "instagram": [],
-    "github": []
-  }
-}
-```
-
----
 
 #### Extract Page Links (`GET/POST /v1/scrape/links`)
-Extracts and categorizes all hyperlinks from any page. Great for SEO audits and crawlers.
+Extracts and categorizes all hyperlinks from any page. Great for SEO audits.
 
 * **Method:** `GET` or `POST`
 * **Parameters:**
   - `url` (String, Required): Target webpage URL.
-
-##### Example JSON Response:
-```json
-{
-  "url": "https://example.com",
-  "internal": ["https://example.com/about", "https://example.com/contact"],
-  "external": ["https://iana.org/domains/reserved"],
-  "total": 3
-}
-```
-
----
 
 #### Parse Tables to JSON (`GET/POST /v1/scrape/table`)
-Automatically detects all tables on any page, parsing their headers and rows into clean JSON arrays.
+Automatically detects tables on any page, parsing them into structured JSON arrays.
 
 * **Method:** `GET` or `POST`
 * **Parameters:**
   - `url` (String, Required): Target webpage URL.
-
-##### Example JSON Response:
-```json
-[
-  {
-    "id": 1,
-    "headers": ["Product Name", "Price", "Stock"],
-    "rows": [
-      {
-        "Product Name": "Premium Scraper Node",
-        "Price": "$19.00",
-        "Stock": "In Stock"
-      }
-    ]
-  }
-]
-```
 
 ---
 
 ### Group 4: Search & Discovery
 
-#### Organic Web Search (`GET/POST /v1/search`)
+#### Organic Web Search (`GET /v1/search`)
 Fetches search results with DuckDuckGo fallback to guarantee 100% SERP scraping uptime.
 
-* **Method:** `GET` or `POST`
-* **Parameters:**
-  - `q` or `query` (String, Required): Search query term.
-  - `num` (Number, Optional): Number of results to return. *(Limited by plan tier)*
+* **Method:** `GET`
+* **Query Parameters:**
+  - `q` (String, Required): Search query term.
+  - `num` (Number, Optional): Number of results to return.
 
----
-
-#### Organic Image Search (`GET/POST /v1/search/images`)
+#### Organic Image Search (`GET /v1/search/images`)
 Searches image results with Bing Images fallback to guarantee 100% image scraping uptime.
 
+* **Method:** `GET`
+* **Query Parameters:**
+  - `q` (String, Required): Search query term.
+  - `num` (Number, Optional): Number of results to return.
+
+#### Google News Search (`GET/POST /v1/search/news`)
+Searches Google News with failover to Bing News for news tracking.
+
 * **Method:** `GET` or `POST`
-* **Parameters:**
-  - `q` or `query` (String, Required): Search query term.
-  - `num` (Number, Optional): Number of results to return. *(Limited by plan tier)*
+* **Query / JSON Body Parameters:**
+  - `q` or `query` (String, Required): News query.
+  - `num` (Number, Optional): Number of news articles to return.
+
+#### Keyword Autocomplete Suggestions (`GET /v1/search/suggest`)
+Queries Google Suggest API to return parsed autocomplete options for SEO keyword research.
+
+* **Method:** `GET`
+* **Query Parameters:**
+  - `q` or `query` (String, Required): Seed keyword term.
