@@ -1,4 +1,5 @@
 import dns from 'dns';
+import net from 'net';
 import { getBrowser } from './browserManager';
 import { JSDOM } from 'jsdom';
 
@@ -12,6 +13,8 @@ export interface EmailVerificationResult {
   deliverable: 'deliverable' | 'undeliverable' | 'unknown';
   domain: string;
   user: string;
+  smtpCheck: 'deliverable' | 'undeliverable' | 'unknown' | 'disabled';
+  isCatchAll: boolean;
 }
 
 export interface DomainProfileResult {
@@ -30,6 +33,13 @@ export interface DomainProfileResult {
   techStack: string[];
   status: 'UP' | 'DOWN';
   responseTimeMs: number;
+  dnsSecurity: {
+    spfRecord: string | null;
+    spfValid: boolean;
+    dmarcRecord: string | null;
+    dmarcValid: boolean;
+    nameServers: string[];
+  };
 }
 
 export interface EmailEnrichmentResult {
@@ -40,6 +50,8 @@ export interface EmailEnrichmentResult {
   verification: {
     isValid: boolean;
     deliverable: string;
+    smtpCheck: string;
+    isCatchAll: boolean;
   };
   company: {
     domain: string;
@@ -48,6 +60,13 @@ export interface EmailEnrichmentResult {
     description: string;
     socials: Record<string, string>;
     techStack: string[];
+    dnsSecurity: {
+      spfRecord: string | null;
+      spfValid: boolean;
+      dmarcRecord: string | null;
+      dmarcValid: boolean;
+      nameServers: string[];
+    };
   } | null;
 }
 
@@ -76,6 +95,78 @@ const ROLE_PREFIXES = new Set([
 ]);
 
 /**
+ * Attempts a TCP SMTP handshake on port 25 to check if mailbox exists.
+ */
+export function checkSmtpMailbox(mxHost: string, email: string): Promise<boolean | 'unknown'> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection(25, mxHost);
+    socket.setTimeout(4000); // 4-second timeout limit for fast responses
+
+    let stage = 0;
+    let resolved = false;
+
+    const cleanupAndResolve = (result: boolean | 'unknown') => {
+      if (resolved) return;
+      resolved = true;
+      socket.destroy();
+      resolve(result);
+    };
+
+    socket.on('connect', () => {
+      // Waiting for greetings from server
+    });
+
+    socket.on('data', (data) => {
+      const response = data.toString();
+      const statusCode = parseInt(response.substring(0, 3));
+
+      if (stage === 0) {
+        if (statusCode >= 200 && statusCode < 300) {
+          socket.write('HELO leadglass.io\r\n');
+          stage = 1;
+        } else {
+          cleanupAndResolve('unknown');
+        }
+      } else if (stage === 1) {
+        if (statusCode >= 200 && statusCode < 300) {
+          socket.write('MAIL FROM:<verifier@leadglass.io>\r\n');
+          stage = 2;
+        } else {
+          cleanupAndResolve('unknown');
+        }
+      } else if (stage === 2) {
+        if (statusCode >= 200 && statusCode < 300) {
+          socket.write(`RCPT TO:<${email}>\r\n`);
+          stage = 3;
+        } else {
+          cleanupAndResolve('unknown');
+        }
+      } else if (stage === 3) {
+        if (statusCode === 250) {
+          cleanupAndResolve(true); // Mailbox exists!
+        } else if (statusCode >= 500 && statusCode < 600) {
+          cleanupAndResolve(false); // Rejected / mailbox not found
+        } else {
+          cleanupAndResolve('unknown');
+        }
+      }
+    });
+
+    socket.on('error', () => {
+      cleanupAndResolve('unknown');
+    });
+
+    socket.on('timeout', () => {
+      cleanupAndResolve('unknown');
+    });
+
+    socket.on('close', () => {
+      cleanupAndResolve('unknown');
+    });
+  });
+}
+
+/**
  * Validates email formatting, performs DNS MX lookups, and runs simulated/live mailbox validation.
  */
 export async function verifyEmailDeliverability(email: string, syntaxOnly = false): Promise<EmailVerificationResult> {
@@ -95,7 +186,9 @@ export async function verifyEmailDeliverability(email: string, syntaxOnly = fals
       isRoleAccount: false,
       deliverable: 'undeliverable',
       domain: '',
-      user: ''
+      user: '',
+      smtpCheck: 'undeliverable',
+      isCatchAll: false
     };
   }
 
@@ -113,7 +206,9 @@ export async function verifyEmailDeliverability(email: string, syntaxOnly = fals
       isRoleAccount,
       deliverable: 'unknown',
       domain,
-      user
+      user,
+      smtpCheck: 'disabled',
+      isCatchAll: false
     };
   }
 
@@ -146,6 +241,36 @@ export async function verifyEmailDeliverability(email: string, syntaxOnly = fals
     }
   }
 
+  // 3. SMTP Handshake & Catch-All Verification (only if deliverable and we have MX records)
+  let smtpCheck: 'deliverable' | 'undeliverable' | 'unknown' | 'disabled' = 'unknown';
+  let isCatchAll = false;
+
+  if (deliverable === 'deliverable' && mxRecords.length > 0) {
+    const primaryMx = mxRecords[0];
+    try {
+      // Connect to port 25 of the primary MX host
+      const smtpOk = await checkSmtpMailbox(primaryMx, cleanEmail);
+      if (smtpOk === true) {
+        smtpCheck = 'deliverable';
+        
+        // Run catch-all check with a randomized address to see if it accepts any address
+        const randomString = `leadglass_catchall_test_${Math.floor(Math.random() * 100000)}`;
+        const testCatchAllEmail = `${randomString}@${domain}`;
+        const catchAllOk = await checkSmtpMailbox(primaryMx, testCatchAllEmail);
+        if (catchAllOk === true) {
+          isCatchAll = true;
+        }
+      } else if (smtpOk === false) {
+        smtpCheck = 'undeliverable';
+        deliverable = 'undeliverable'; // Downgrade deliverability
+      } else {
+        smtpCheck = 'unknown';
+      }
+    } catch (smtpErr) {
+      smtpCheck = 'unknown';
+    }
+  }
+
   return {
     email: cleanEmail,
     isValid: deliverable === 'deliverable',
@@ -155,7 +280,9 @@ export async function verifyEmailDeliverability(email: string, syntaxOnly = fals
     isRoleAccount,
     deliverable,
     domain,
-    user
+    user,
+    smtpCheck,
+    isCatchAll
   };
 }
 
@@ -166,59 +293,124 @@ function analyzeTechStack(html: string): string[] {
   const techs: string[] = [];
   const lowerHtml = html.toLowerCase();
 
-  // Technology fingerprint lists
-  if (lowerHtml.includes('/wp-content/') || lowerHtml.includes('/wp-includes/')) {
-    techs.push('WordPress');
-  }
-  if (lowerHtml.includes('cdn.shopify.com') || lowerHtml.includes('shopify.theme')) {
-    techs.push('Shopify');
-  }
-  if (lowerHtml.includes('_next/static') || lowerHtml.includes('next.js')) {
-    techs.push('Next.js');
-  }
-  if (lowerHtml.includes('react-dom') || lowerHtml.includes('data-reactroot') || lowerHtml.includes('react.js')) {
-    techs.push('React');
-  }
-  if (lowerHtml.includes('js.stripe.com') || lowerHtml.includes('stripe-button')) {
-    techs.push('Stripe Payments');
-  }
-  if (lowerHtml.includes('googletagmanager.com') || lowerHtml.includes('google-analytics')) {
-    techs.push('Google Analytics');
-  }
-  if (lowerHtml.includes('data-wf-page') || lowerHtml.includes('webflow.css')) {
-    techs.push('Webflow');
-  }
-  if (lowerHtml.includes('tailwind.css') || lowerHtml.includes('tailwindcss') || lowerHtml.includes('h-screen') || lowerHtml.includes('flex flex-col')) {
-    techs.push('Tailwind CSS');
-  }
-  if (lowerHtml.includes('js.hs-scripts.com') || lowerHtml.includes('hs-analytics')) {
-    techs.push('HubSpot');
-  }
-  if (lowerHtml.includes('widget.intercom.io')) {
-    techs.push('Intercom');
-  }
-  if (lowerHtml.includes('cf-beacon') || lowerHtml.includes('cloudflare')) {
-    techs.push('Cloudflare');
-  }
-  if (lowerHtml.includes('angular.js') || lowerHtml.includes('ng-version') || lowerHtml.includes('ng-app')) {
-    techs.push('Angular');
-  }
-  if (lowerHtml.includes('vue.js') || lowerHtml.includes('vue-router') || lowerHtml.includes('data-v-')) {
-    techs.push('Vue.js');
-  }
-  if (lowerHtml.includes('wix.com') || lowerHtml.includes('wix-image')) {
-    techs.push('Wix');
-  }
-  if (lowerHtml.includes('squarespace.com') || lowerHtml.includes('squarespace-headers')) {
-    techs.push('Squarespace');
-  }
-  if (lowerHtml.includes('sentry.io') || lowerHtml.includes('sentry-cdn')) {
-    techs.push('Sentry Error Logging');
-  }
+  // CMS & Builders
+  if (lowerHtml.includes('/wp-content/') || lowerHtml.includes('/wp-includes/')) techs.push('WordPress');
+  if (lowerHtml.includes('cdn.shopify.com') || lowerHtml.includes('shopify.theme')) techs.push('Shopify');
+  if (lowerHtml.includes('data-wf-page') || lowerHtml.includes('webflow.css') || lowerHtml.includes('webflow.com')) techs.push('Webflow');
+  if (lowerHtml.includes('squarespace.com') || lowerHtml.includes('squarespace-headers')) techs.push('Squarespace');
+  if (lowerHtml.includes('wix.com') || lowerHtml.includes('wix-image')) techs.push('Wix');
+  if (lowerHtml.includes('drupal.org') || lowerHtml.includes('sites/all/themes')) techs.push('Drupal');
+  if (lowerHtml.includes('joomla!')) techs.push('Joomla');
+
+  // Frameworks
+  if (lowerHtml.includes('_next/static') || lowerHtml.includes('next.js')) techs.push('Next.js');
+  if (lowerHtml.includes('react-dom') || lowerHtml.includes('data-reactroot') || lowerHtml.includes('react.js')) techs.push('React');
+  if (lowerHtml.includes('vue.js') || lowerHtml.includes('vue-router') || lowerHtml.includes('data-v-')) techs.push('Vue.js');
+  if (lowerHtml.includes('angular.js') || lowerHtml.includes('ng-version') || lowerHtml.includes('ng-app')) techs.push('Angular');
+  if (lowerHtml.includes('nuxt.js') || lowerHtml.includes('nuxt-link')) techs.push('Nuxt.js');
+  if (lowerHtml.includes('svelte') || lowerHtml.includes('svelte-')) techs.push('Svelte');
+  if (lowerHtml.includes('jquery.js') || lowerHtml.includes('jquery.min.js')) techs.push('jQuery');
+
+  // CSS Frameworks
+  if (lowerHtml.includes('tailwind.css') || lowerHtml.includes('tailwindcss') || lowerHtml.includes('h-screen') || lowerHtml.includes('flex flex-col')) techs.push('Tailwind CSS');
+  if (lowerHtml.includes('bootstrap.css') || lowerHtml.includes('bootstrap.min.css') || lowerHtml.includes('class="btn btn-')) techs.push('Bootstrap');
+
+  // CRM, Chat, Support & Marketing Automation
+  if (lowerHtml.includes('js.hs-scripts.com') || lowerHtml.includes('hs-analytics') || lowerHtml.includes('hubspot')) techs.push('HubSpot');
+  if (lowerHtml.includes('widget.intercom.io') || lowerHtml.includes('intercomsettings')) techs.push('Intercom');
+  if (lowerHtml.includes('js.driftt.com') || lowerHtml.includes('drift.load')) techs.push('Drift Chat');
+  if (lowerHtml.includes('zendesk.com') || lowerHtml.includes('zdassets.com')) techs.push('Zendesk');
+  if (lowerHtml.includes('salesforce.com') || lowerHtml.includes('webtolead')) techs.push('Salesforce');
+  if (lowerHtml.includes('activecampaign')) techs.push('ActiveCampaign');
+  if (lowerHtml.includes('chimpstatic.com') || lowerHtml.includes('mailchimp')) techs.push('Mailchimp');
+  if (lowerHtml.includes('klaviyo')) techs.push('Klaviyo');
+  if (lowerHtml.includes('marketo.com') || lowerHtml.includes('munchkin.js')) techs.push('Marketo');
+
+  // Analytics & Tracking
+  if (lowerHtml.includes('googletagmanager.com') || lowerHtml.includes('google-analytics')) techs.push('Google Analytics');
+  if (lowerHtml.includes('gtag(') || lowerHtml.includes('analytics.js')) techs.push('Google Analytics 4');
+  if (lowerHtml.includes('static.hotjar.com') || lowerHtml.includes('hotjar.js')) techs.push('Hotjar');
+  if (lowerHtml.includes('cdn.segment.com') || lowerHtml.includes('analytics.track')) techs.push('Segment');
+  if (lowerHtml.includes('mixpanel.js') || lowerHtml.includes('mixpanel.track')) techs.push('Mixpanel');
+  if (lowerHtml.includes('amplitude.js')) techs.push('Amplitude');
+  if (lowerHtml.includes('optimizely.com')) techs.push('Optimizely');
+
+  // Payments & E-commerce
+  if (lowerHtml.includes('js.stripe.com') || lowerHtml.includes('stripe-button')) techs.push('Stripe Payments');
+  if (lowerHtml.includes('paypal.com/sdk') || lowerHtml.includes('paypalobjects.com')) techs.push('PayPal');
+  if (lowerHtml.includes('braintreegateway.com') || lowerHtml.includes('braintree.js')) techs.push('Braintree');
+  if (lowerHtml.includes('recurly.com')) techs.push('Recurly');
+  if (lowerHtml.includes('chargify.com')) techs.push('Chargify');
+  if (lowerHtml.includes('woocommerce')) techs.push('WooCommerce');
+  if (lowerHtml.includes('magento') || lowerHtml.includes('magedoc')) techs.push('Magento');
+  if (lowerHtml.includes('bigcommerce')) techs.push('BigCommerce');
+
+  // DevOps & Utilities
+  if (lowerHtml.includes('sentry.io') || lowerHtml.includes('sentry-cdn')) techs.push('Sentry Error Logging');
+  if (lowerHtml.includes('bugsnag.com') || lowerHtml.includes('bugsnag.min.js')) techs.push('Bugsnag');
+  if (lowerHtml.includes('datadoghq.com') || lowerHtml.includes('dd-rum')) techs.push('Datadog RUM');
+  if (lowerHtml.includes('newrelic.com') || lowerHtml.includes('nr-data.net')) techs.push('New Relic');
+  if (lowerHtml.includes('cf-beacon') || lowerHtml.includes('cloudflare')) techs.push('Cloudflare');
 
   // Deduplicate and fallback
   const uniqueTechs = Array.from(new Set(techs));
   return uniqueTechs.length > 0 ? uniqueTechs : ['HTML5/JavaScript'];
+}
+
+/**
+ * Audits domain security records (SPF/DMARC) and Name Servers
+ */
+async function auditDnsSecurity(domain: string): Promise<{
+  spfRecord: string | null;
+  spfValid: boolean;
+  dmarcRecord: string | null;
+  dmarcValid: boolean;
+  nameServers: string[];
+}> {
+  let spfRecord: string | null = null;
+  let spfValid = false;
+  let dmarcRecord: string | null = null;
+  let dmarcValid = false;
+  let nameServers: string[] = [];
+
+  // Query Name Servers
+  try {
+    nameServers = await dns.promises.resolveNs(domain);
+  } catch (err) {
+    nameServers = [];
+  }
+
+  // Query SPF
+  try {
+    const txtRecords = await dns.promises.resolveTxt(domain);
+    for (const record of txtRecords) {
+      const flat = record.join('');
+      if (flat.startsWith('v=spf1')) {
+        spfRecord = flat;
+        spfValid = true;
+        break;
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  // Query DMARC (on _dmarc.domain)
+  try {
+    const dmarcTxt = await dns.promises.resolveTxt(`_dmarc.${domain}`);
+    for (const record of dmarcTxt) {
+      const flat = record.join('');
+      if (flat.startsWith('v=DMARC1')) {
+        dmarcRecord = flat;
+        dmarcValid = true;
+        break;
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  return { spfRecord, spfValid, dmarcRecord, dmarcValid, nameServers };
 }
 
 /**
@@ -328,6 +520,9 @@ export async function profileDomain(domain: string): Promise<DomainProfileResult
 
   const techStack = html ? analyzeTechStack(html) : ['Unknown'];
 
+  // Run DNS Security audits in parallel
+  const dnsSecurity = await auditDnsSecurity(cleanDomain);
+
   return {
     domain: cleanDomain,
     name,
@@ -337,7 +532,8 @@ export async function profileDomain(domain: string): Promise<DomainProfileResult
     socials,
     techStack,
     status,
-    responseTimeMs
+    responseTimeMs,
+    dnsSecurity
   };
 }
 
@@ -385,7 +581,8 @@ export async function enrichEmailAddress(email: string): Promise<EmailEnrichment
           logo: profile.logo,
           description: profile.description,
           socials: profile.socials,
-          techStack: profile.techStack
+          techStack: profile.techStack,
+          dnsSecurity: profile.dnsSecurity
         };
       }
     } catch (e) {
@@ -400,7 +597,9 @@ export async function enrichEmailAddress(email: string): Promise<EmailEnrichment
     fullName,
     verification: {
       isValid: verification.isValid,
-      deliverable: verification.deliverable
+      deliverable: verification.deliverable,
+      smtpCheck: verification.smtpCheck,
+      isCatchAll: verification.isCatchAll
     },
     company: companyProfile
   };

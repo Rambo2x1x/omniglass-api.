@@ -75,7 +75,9 @@ Checks email validity, parses username prefixes, and flags disposable or role-ba
   "isRoleAccount": false,
   "deliverable": "deliverable",
   "domain": "gmail.com",
-  "user": "alex.jones"
+  "user": "alex.jones",
+  "smtpCheck": "deliverable",
+  "isCatchAll": false
 }
 ```
 
@@ -108,7 +110,17 @@ Profiles a corporate domain by scraping its landing page, resolving meta titles,
     "Tailwind CSS"
   ],
   "status": "UP",
-  "responseTimeMs": 140
+  "responseTimeMs": 140,
+  "dnsSecurity": {
+    "spfRecord": "v=spf1 include:spf.stripe.com ~all",
+    "spfValid": true,
+    "dmarcRecord": "v=DMARC1; p=reject; pct=100;...",
+    "dmarcValid": true,
+    "nameServers": [
+      "dns1.cloudflare.com",
+      "dns2.cloudflare.com"
+    ]
+  }
 }
 ```
 
@@ -129,7 +141,9 @@ A powerful endpoint combining name-extraction, deliverability checking, and doma
   "fullName": "Alex Jones",
   "verification": {
     "isValid": true,
-    "deliverable": "deliverable"
+    "deliverable": "deliverable",
+    "smtpCheck": "deliverable",
+    "isCatchAll": false
   },
   "company": {
     "domain": "stripe.com",
@@ -147,7 +161,17 @@ A powerful endpoint combining name-extraction, deliverability checking, and doma
       "React",
       "Stripe Payments",
       "Tailwind CSS"
-  ]
+    ],
+    "dnsSecurity": {
+      "spfRecord": "v=spf1 include:spf.stripe.com ~all",
+      "spfValid": true,
+      "dmarcRecord": "v=DMARC1; p=reject; pct=100;...",
+      "dmarcValid": true,
+      "nameServers": [
+        "dns1.cloudflare.com",
+        "dns2.cloudflare.com"
+      ]
+    }
   }
 }
 ```

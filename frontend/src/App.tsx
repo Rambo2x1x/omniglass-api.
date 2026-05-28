@@ -1072,18 +1072,27 @@ else:
                               {pgResult.isValid ? 'Deliverable' : 'Undeliverable'}
                             </span>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.8rem' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem 0.5rem', fontSize: '0.8rem' }}>
                             <div><strong>Domain:</strong> {pgResult.domain}</div>
                             <div><strong>User Prefix:</strong> {pgResult.user}</div>
-                            <div><strong>Disposable Domain:</strong> {pgResult.isDisposable ? '🔴 Yes' : '🟢 No'}</div>
-                            <div><strong>Role Account:</strong> {pgResult.isRoleAccount ? '⚠️ Yes' : '🟢 No'}</div>
+                            <div><strong>Disposable Domain:</strong> {pgResult.isDisposable ? '🔴 Yes (Blocked)' : '🟢 No'}</div>
+                            <div><strong>Role Account:</strong> {pgResult.isRoleAccount ? '⚠️ Yes (Role)' : '🟢 No'}</div>
+                            <div>
+                              <strong>SMTP Mailbox: </strong> 
+                              <span className={`badge ${pgResult.smtpCheck === 'deliverable' ? 'badge-green' : pgResult.smtpCheck === 'undeliverable' ? 'badge-red' : 'badge-blue'}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', textTransform: 'capitalize' }}>
+                                {pgResult.smtpCheck}
+                              </span>
+                            </div>
+                            <div><strong>Catch-All Server:</strong> {pgResult.isCatchAll ? '⚠️ Yes' : '🟢 No'}</div>
                           </div>
                           {pgResult.mxRecords && pgResult.mxRecords.length > 0 && (
-                            <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                              <strong>Resolved MX Exchange:</strong>
-                              <pre style={{ margin: '0.2rem 0 0 0', padding: '0.25rem', backgroundColor: 'var(--bg-main)', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>
-                                {pgResult.mxRecords.slice(0, 2).join('\n')}
-                              </pre>
+                            <div style={{ fontSize: '0.75rem', marginTop: '0.4rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
+                              <strong>Resolved MX Exchanges (Prioritized):</strong>
+                              <div className="flex-row" style={{ flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.2rem', justifyContent: 'flex-start' }}>
+                                {pgResult.mxRecords.slice(0, 3).map((mx: string, idx: number) => (
+                                  <span key={idx} className="badge badge-purple" style={{ fontSize: '0.65rem' }}>{mx}</span>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1130,6 +1139,24 @@ else:
                               </div>
                             </div>
                           )}
+                          {pgResult.dnsSecurity && (
+                            <div className="flex-col" style={{ gap: '0.4rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem', marginTop: '0.4rem' }}>
+                              <strong style={{ fontSize: '0.75rem' }}>DNS Security & Infrastructure:</strong>
+                              <div className="flex-row" style={{ gap: '0.5rem', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+                                <span className={`badge ${pgResult.dnsSecurity.spfValid ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>
+                                  SPF: {pgResult.dnsSecurity.spfValid ? 'Configured' : 'Missing'}
+                                </span>
+                                <span className={`badge ${pgResult.dnsSecurity.dmarcValid ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>
+                                  DMARC: {pgResult.dnsSecurity.dmarcValid ? 'Configured' : 'Missing'}
+                                </span>
+                              </div>
+                              {pgResult.dnsSecurity.nameServers && pgResult.dnsSecurity.nameServers.length > 0 && (
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                  <strong>Name Servers:</strong> {pgResult.dnsSecurity.nameServers.slice(0, 3).join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1144,6 +1171,11 @@ else:
                               </span>
                             </div>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pgResult.email}</span>
+                            <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.7rem', marginTop: '0.2rem', color: 'var(--text-muted)' }}>
+                              <span>SMTP Check: <strong style={{ color: pgResult.verification?.smtpCheck === 'deliverable' ? '#10b981' : pgResult.verification?.smtpCheck === 'undeliverable' ? '#ef4444' : 'inherit' }}>{pgResult.verification?.smtpCheck || 'unknown'}</strong></span>
+                              <span>•</span>
+                              <span>Catch-All: <strong>{pgResult.verification?.isCatchAll ? '⚠️ Yes' : '🟢 No'}</strong></span>
+                            </div>
                           </div>
                           {pgResult.company ? (
                             <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
@@ -1159,6 +1191,16 @@ else:
                                   {pgResult.company.techStack.slice(0, 4).map((tech: string, i: number) => (
                                     <span key={i} className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{tech}</span>
                                   ))}
+                                </div>
+                              )}
+                              {pgResult.company.dnsSecurity && (
+                                <div className="flex-row" style={{ gap: '0.4rem', justifyContent: 'flex-start', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                                  <span className={`badge ${pgResult.company.dnsSecurity.spfValid ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.25rem' }}>
+                                    SPF: {pgResult.company.dnsSecurity.spfValid ? 'Configured' : 'Missing'}
+                                  </span>
+                                  <span className={`badge ${pgResult.company.dnsSecurity.dmarcValid ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.25rem' }}>
+                                    DMARC: {pgResult.company.dnsSecurity.dmarcValid ? 'Configured' : 'Missing'}
+                                  </span>
                                 </div>
                               )}
                             </div>
