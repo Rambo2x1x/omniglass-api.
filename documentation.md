@@ -24,7 +24,7 @@ Our backend automatically enforces plan-specific tier limitations:
 | **Markdown Scrape (`/v1/scrape`)** | Unlocked (No selector) | Unlocked (Selector enabled) | Unlocked (Selector enabled) |
 | **Raw HTML Scraper (`/v1/scrape/raw`)**| ❌ Locked | Unlocked | Unlocked |
 | **PDF Renderer (`/v1/pdf`)** | ❌ Locked | Unlocked | Unlocked |
-| **Element Screenshot (`/element`)** | ❌ Locked | Unlocked | Unlocked |
+| **Element Screenshot (`/v1/screenshot/element`)** | ❌ Locked | Unlocked | Unlocked |
 | **Domain Enrichment (`/v1/enrich/domain`)**| ❌ Locked | Unlocked | Unlocked |
 | **Email Enrichment (`/v1/enrich/email`)** | ❌ Locked | ❌ Locked | Unlocked |
 | **Lead Gen (`/v1/scrape/emails`)** | ❌ Locked | ❌ Locked | Unlocked |
