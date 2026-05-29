@@ -1,5 +1,5 @@
 {
-  "name": "omniscrape-backend",
+  "name": "omniglass-backend",
   "version": "1.0.0",
   "description": "RapidAPI Backend for scraping, screenshots, and PDFs",
   "main": "dist/server.js",

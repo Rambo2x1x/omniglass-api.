@@ -1,6 +1,6 @@
-# LeadGlass - B2B Intel & Developer Scraping API Documentation
+# OmniGlass - B2B Intel & Developer Scraping API Documentation
 
-Welcome to the unified **LeadGlass API**! This enterprise-grade platform combines B2B contact verification, domain security audits, stealth headless web scraping, browser media rendering (screenshots and PDFs), and organic search SERP extraction under one single developer access key.
+Welcome to the unified **OmniGlass API**! This enterprise-grade platform combines B2B contact verification, domain security audits, stealth headless web scraping, browser media rendering (screenshots and PDFs), and organic search SERP extraction under one single developer access key.
 
 ---
 
@@ -24,7 +24,7 @@ Provide your API key (`os_...`) generated from your developer dashboard using th
 
 | Header Name | Description |
 |---|---|
-| `X-API-Key` | Your active LeadGlass developer API key |
+| `X-API-Key` | Your active OmniGlass developer API key |
 
 ### 2. RapidAPI Marketplace Proxy
 If routing via RapidAPI, supply your marketplace keys:
@@ -32,7 +32,7 @@ If routing via RapidAPI, supply your marketplace keys:
 | Header Name | Description |
 |---|---|
 | `X-RapidAPI-Key` | Your RapidAPI application subscription key |
-| `X-RapidAPI-Host` | `leadglass-api.p.rapidapi.com` |
+| `X-RapidAPI-Host` | `omniglass-api.p.rapidapi.com` |
 
 ---
 

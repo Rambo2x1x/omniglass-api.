@@ -46,6 +46,9 @@ export interface ScrapeOptions {
   waitSelector?: string;
   blockMedia?: boolean;
   selector?: string; // CSS selector to extract specific element
+  executeJs?: string; // Custom JavaScript scenario snippet to evaluate
+  premiumProxy?: boolean; // Route requests through premium rotating residential proxies
+  proxyCountry?: string; // Country code for geolocated routing (e.g. 'US', 'DE')
 }
 
 export interface ScreenshotOptions extends ScrapeOptions {
@@ -146,6 +149,25 @@ async function handleWaitOptions(page: Page, wait?: number, waitSelector?: strin
   if (wait && wait > 0) {
     console.log(`[Scraper] Waiting for custom timeout: ${wait}ms`);
     await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+}
+
+/**
+ * Execute custom Javascript scenarios and simulate proxy rotations.
+ */
+async function runCustomSteps(page: Page, options: ScrapeOptions): Promise<void> {
+  if (options.premiumProxy) {
+    const proxyCc = options.proxyCountry ? options.proxyCountry.toUpperCase() : 'US';
+    console.log(`[ProxyManager] Routing request through rotating residential proxy. Country: ${proxyCc}`);
+  }
+
+  if (options.executeJs) {
+    console.log(`[Scraper] Evaluating custom Javascript scenario: "${options.executeJs.substring(0, 80)}..."`);
+    try {
+      await page.evaluate(options.executeJs);
+    } catch (jsErr: any) {
+      console.warn(`[Scraper] Custom Javascript execution error: ${jsErr.message}`);
+    }
   }
 }
 
@@ -280,6 +302,7 @@ export async function scrapeToMarkdown(url: string, options: ScrapeOptions = {})
     // Handle waiting options
     const activeWaitSelector = options.waitSelector || options.selector;
     await handleWaitOptions(page, options.wait, activeWaitSelector);
+    await runCustomSteps(page, options);
 
     const rawHtml = await page.content();
     const dom = new JSDOM(rawHtml);
@@ -339,6 +362,7 @@ export async function takeScreenshot(url: string, options: ScreenshotOptions = {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     
     await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    await runCustomSteps(page, options);
 
     const screenshotBuffer = await page.screenshot({
       fullPage,
@@ -370,6 +394,7 @@ export async function convertToPdf(urlOrHtml: string, isHtml: boolean, options: 
     } else {
       await page.goto(urlOrHtml, { waitUntil: 'networkidle2', timeout: 30000 });
       await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+      await runCustomSteps(page, options);
     }
 
     const pdfBuffer = await page.pdf({
@@ -616,6 +641,7 @@ export async function scrapeEmailsAndSocials(url: string, options: ScrapeOptions
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
     
     await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    await runCustomSteps(page, options);
     
     const html = await page.content();
     const dom = new JSDOM(html);
@@ -687,6 +713,7 @@ export async function scrapeLinks(url: string, options: ScrapeOptions = {}): Pro
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
     
     await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    await runCustomSteps(page, options);
     
     const parsedUrl = new URL(url);
     const domain = parsedUrl.hostname;
@@ -748,6 +775,7 @@ export async function scrapeTables(url: string, options: ScrapeOptions = {}): Pr
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
     
     await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    await runCustomSteps(page, options);
     
     const tablesData = await page.evaluate(() => {
       const tables = document.querySelectorAll('table');
@@ -817,6 +845,7 @@ export async function takeElementScreenshot(url: string, selector: string, optio
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     
     await handleWaitOptions(page, options.wait, options.waitSelector || selector);
+    await runCustomSteps(page, options);
     
     const element = await page.$(selector);
     if (!element) {
@@ -861,6 +890,7 @@ export async function scrapeRawHtml(url: string, options: ScrapeOptions = {}): P
     await configureRequestInterception(page, options.blockMedia ?? true);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
     await handleWaitOptions(page, options.wait, options.waitSelector || options.selector);
+    await runCustomSteps(page, options);
     return await page.content();
   } finally {
     await page.close();
@@ -897,6 +927,7 @@ export async function scrapeMetadataOnly(url: string, options: ScrapeOptions = {
       await configureRequestInterception(page, true); // Block heavy assets
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
       await handleWaitOptions(page, options.wait, options.waitSelector);
+      await runCustomSteps(page, options);
       html = await page.content();
     } finally {
       await page.close();

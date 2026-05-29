@@ -6,7 +6,7 @@ set PATH=C:\Program Files\nodejs;C:\Users\avell\AppData\Roaming\npm;%PATH%
 cd /d "%~dp0"
 
 echo ==========================================
-echo Starting OmniScrape Backend & Frontend...
+echo Starting OmniGlass Backend & Frontend...
 echo ==========================================
 
 npm run dev

@@ -28,6 +28,8 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
+import { FALLBACK_CATALOG } from './fallbackCatalog';
+import type { EndpointSpec } from './fallbackCatalog';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
 
@@ -104,6 +106,9 @@ export default function App() {
   const [pgNum, setPgNum] = useState(10);
   const [pgBlockMedia, setPgBlockMedia] = useState(true);
   const [pgFullPage, setPgFullPage] = useState(true);
+  const [pgExecuteJs, setPgExecuteJs] = useState('');
+  const [pgPremiumProxy, setPgPremiumProxy] = useState(false);
+  const [pgProxyCountry, setPgProxyCountry] = useState('US');
   const [pgLoading, setPgLoading] = useState(false);
   const [pgResult, setPgResult] = useState<any>(null);
   const [pgResponseHeaders, setPgResponseHeaders] = useState<Record<string, string>>({});
@@ -116,6 +121,33 @@ export default function App() {
   // Copy status animations
   const [copiedRawKey, setCopiedRawKey] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Endpoints Catalog State
+  const [endpoints, setEndpoints] = useState<EndpointSpec[]>(FALLBACK_CATALOG);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [docSearch, setDocSearch] = useState('');
+  const [docFilter, setDocFilter] = useState<'all' | 'b2b' | 'scrape' | 'search'>('all');
+
+  // Fetch API Catalog on mount
+  useEffect(() => {
+    const fetchCatalog = async () => {
+      setCatalogLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/v1/endpoints`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.endpoints)) {
+            setEndpoints(data.endpoints);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch dynamic API catalog:', err);
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+    fetchCatalog();
+  }, []);
 
   // Load user profile and analytics when token is available
   useEffect(() => {
@@ -371,6 +403,9 @@ export default function App() {
 
     const blockMediaParam = pgBlockMedia ? '&blockMedia=true' : '&blockMedia=false';
     const fullPageParam = pgFullPage ? '&fullPage=true' : '&fullPage=false';
+    const premiumQueryStr = pgPremiumProxy ? `&premiumProxy=true&proxyCountry=${encodeURIComponent(pgProxyCountry)}` : '';
+    const jsQueryStr = pgExecuteJs ? `&executeJs=${encodeURIComponent(pgExecuteJs)}` : '';
+    const premiumParamsString = `${premiumQueryStr}${jsQueryStr}`;
 
     switch (pgAction) {
       case 'verify_email':
@@ -386,44 +421,44 @@ export default function App() {
         fetchUrl = `/v1/verify/phone?phone=${encodeURIComponent(pgPhone)}`;
         break;
       case 'scrape':
-        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        fetchUrl = `/v1/scrape?url=${encodeURIComponent(pgUrl)}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'selector':
         fetchMethod = 'POST';
-        fetchBody = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia };
+        fetchBody = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia, executeJs: pgExecuteJs || undefined, premiumProxy: pgPremiumProxy || undefined, proxyCountry: pgPremiumProxy ? pgProxyCountry : undefined };
         fetchUrl = `/v1/scrape`;
         break;
       case 'raw':
-        fetchUrl = `/v1/scrape/raw?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        fetchUrl = `/v1/scrape/raw?url=${encodeURIComponent(pgUrl)}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'metadata':
-        fetchUrl = `/v1/scrape/metadata?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/scrape/metadata?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'status':
         fetchUrl = `/v1/scrape/status?url=${encodeURIComponent(pgUrl)}`;
         break;
       case 'screenshot':
-        fetchUrl = `/v1/screenshot?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}`;
+        fetchUrl = `/v1/screenshot?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'element_screenshot':
-        fetchUrl = `/v1/screenshot/element?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}`;
+        fetchUrl = `/v1/screenshot/element?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}${premiumParamsString}`;
         break;
       case 'pdf':
-        fetchUrl = `/v1/pdf?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/pdf?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'html_pdf':
         fetchMethod = 'POST';
-        fetchBody = { html: pgHtml };
+        fetchBody = { html: pgHtml, executeJs: pgExecuteJs || undefined, premiumProxy: pgPremiumProxy || undefined, proxyCountry: pgPremiumProxy ? pgProxyCountry : undefined };
         fetchUrl = `/v1/pdf`;
         break;
       case 'emails':
-        fetchUrl = `/v1/scrape/emails?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/scrape/emails?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'links':
-        fetchUrl = `/v1/scrape/links?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/scrape/links?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'table':
-        fetchUrl = `/v1/scrape/table?url=${encodeURIComponent(pgUrl)}`;
+        fetchUrl = `/v1/scrape/table?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'search':
         fetchUrl = `/v1/search?q=${encodeURIComponent(pgQuery)}&num=${pgNum}`;
@@ -522,6 +557,9 @@ export default function App() {
 
     const blockMediaParam = pgBlockMedia ? '&blockMedia=true' : '&blockMedia=false';
     const fullPageParam = pgFullPage ? '&fullPage=true' : '&fullPage=false';
+    const premiumQueryStr = pgPremiumProxy ? `&premiumProxy=true&proxyCountry=${encodeURIComponent(pgProxyCountry)}` : '';
+    const jsQueryStr = pgExecuteJs ? `&executeJs=${encodeURIComponent(pgExecuteJs)}` : '';
+    const premiumParamsString = `${premiumQueryStr}${jsQueryStr}`;
 
     switch (pgAction) {
       case 'verify_email':
@@ -542,20 +580,20 @@ export default function App() {
         break;
       case 'scrape':
         path = '/v1/scrape';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'selector':
         path = '/v1/scrape';
         method = 'POST';
-        bodyData = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia };
+        bodyData = { url: pgUrl, selector: pgSelector, blockMedia: pgBlockMedia, executeJs: pgExecuteJs || undefined, premiumProxy: pgPremiumProxy || undefined, proxyCountry: pgPremiumProxy ? pgProxyCountry : undefined };
         break;
       case 'raw':
         path = '/v1/scrape/raw';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}${blockMediaParam}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'metadata':
         path = '/v1/scrape/metadata';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'status':
         path = '/v1/scrape/status';
@@ -563,32 +601,32 @@ export default function App() {
         break;
       case 'screenshot':
         path = '/v1/screenshot';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${fullPageParam}${blockMediaParam}${premiumParamsString}`;
         break;
       case 'element_screenshot':
         path = '/v1/screenshot/element';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}&selector=${encodeURIComponent(pgSelector)}${premiumParamsString}`;
         break;
       case 'pdf':
         path = '/v1/pdf';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'html_pdf':
         path = '/v1/pdf';
         method = 'POST';
-        bodyData = { html: pgHtml };
+        bodyData = { html: pgHtml, executeJs: pgExecuteJs || undefined, premiumProxy: pgPremiumProxy || undefined, proxyCountry: pgPremiumProxy ? pgProxyCountry : undefined };
         break;
       case 'emails':
         path = '/v1/scrape/emails';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'links':
         path = '/v1/scrape/links';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'table':
         path = '/v1/scrape/table';
-        queryParams = `?url=${encodeURIComponent(pgUrl)}`;
+        queryParams = `?url=${encodeURIComponent(pgUrl)}${premiumParamsString}`;
         break;
       case 'search':
         path = '/v1/search';
@@ -687,7 +725,7 @@ else:
         <div className="card auth-card card-glow">
           <div className="flex-center mb-3">
             <span className="logo" style={{ marginBottom: 0 }}>
-              <Zap style={{ color: 'var(--secondary)' }} /> LeadGlass API
+              <Zap style={{ color: 'var(--secondary)' }} /> OmniGlass API
             </span>
           </div>
 
@@ -768,7 +806,7 @@ else:
       <aside className="sidebar">
         <div className="logo">
           <Zap size={22} style={{ color: 'var(--secondary)', fill: 'var(--secondary)' }} />
-          <span>LeadGlass API</span>
+          <span>OmniGlass API</span>
         </div>
 
         <ul className="menu-list" style={{ flexGrow: 1 }}>
@@ -1325,6 +1363,58 @@ else:
                     </div>
                   )}
 
+                  {/* Premium Options: Custom JS & Proxy */}
+                  {!['search', 'images', 'news', 'suggest', 'verify_email', 'enrich_domain', 'enrich_email', 'verify_phone'].includes(pgAction) && (
+                    <div style={{ marginTop: '0.75rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }} className="flex-col">
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--secondary)' }}>Premium API Capabilities</label>
+                      
+                      <div className="flex-between">
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={pgPremiumProxy}
+                            onChange={(e) => setPgPremiumProxy(e.target.checked)}
+                          />
+                          Use Rotating Premium Proxies
+                        </label>
+                        
+                        {pgPremiumProxy && (
+                          <div style={{ width: '120px' }}>
+                            <select
+                              value={pgProxyCountry}
+                              onChange={(e) => setPgProxyCountry(e.target.value)}
+                              style={{ padding: '0.3rem', fontSize: '0.75rem' }}
+                            >
+                              <option value="US">United States (US)</option>
+                              <option value="DE">Germany (DE)</option>
+                              <option value="GB">United Kingdom (GB)</option>
+                              <option value="FR">France (FR)</option>
+                              <option value="JP">Japan (JP)</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-col" style={{ gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Execute JavaScript Scenario</label>
+                        <textarea
+                          placeholder="e.g. window.scrollTo(0, document.body.scrollHeight) or click buttons"
+                          value={pgExecuteJs}
+                          onChange={(e) => setPgExecuteJs(e.target.value)}
+                          rows={2}
+                          style={{
+                            fontSize: '0.75rem',
+                            backgroundColor: 'var(--bg-main)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: '#fff',
+                            fontFamily: 'var(--font-mono)'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={runPlaygroundRequest}
                     disabled={pgLoading}
@@ -1363,7 +1453,7 @@ else:
                   <div className="flex-center" style={{ flexGrow: 1, flexDirection: 'column', gap: '0.5rem' }}>
                     <Loader2 className="animate-spin" size={32} style={{ color: 'var(--secondary)' }} />
                     <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                      Querying LeadGlass B2B database...
+                      Querying OmniGlass B2B database...
                     </p>
                   </div>
                 ) : pgResult ? (
@@ -1619,119 +1709,318 @@ else:
         {/* ====================================================
             TAB: DOCUMENTATION
             ==================================================== */}
-        {activeTab === 'docs' && (
-          <div>
-            <h1>Developer Documentation</h1>
-            <p className="mb-3">Integrate LeadGlass B2B validation and enrichment APIs directly into your software. Pay-as-you-go REST interfaces.</p>
+        {activeTab === 'docs' && (() => {
+          const selectedEp = endpoints.find(e => e.id === pgAction) || endpoints[0];
+          const filteredEndpoints = endpoints.filter(ep => {
+            const matchesSearch = 
+              ep.name.toLowerCase().includes(docSearch.toLowerCase()) ||
+              ep.path.toLowerCase().includes(docSearch.toLowerCase()) ||
+              ep.description.toLowerCase().includes(docSearch.toLowerCase());
+            
+            if (docFilter === 'all') return matchesSearch;
+            if (docFilter === 'b2b') return matchesSearch && ep.group === 'B2B Intel & Verification';
+            if (docFilter === 'scrape') return matchesSearch && ep.group === 'Web Scraping & Media';
+            if (docFilter === 'search') return matchesSearch && ep.group === 'Data Extraction & Search';
+            return matchesSearch;
+          });
 
-            <div className="grid-1-2">
-              <div className="card flex-col" style={{ height: 'fit-content', gap: '1.25rem' }}>
-                <h3>Endpoints Reference</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '480px', overflowY: 'auto', paddingRight: '0.25rem' }}>
-                  {[
-                    { id: 'verify_email', method: 'GET', path: '/v1/verify/email', desc: 'Verify email delivery & SMTP mailbox existence' },
-                    { id: 'enrich_domain', method: 'GET', path: '/v1/enrich/domain', desc: 'Profile domain descriptions, logos, and tech stack tags' },
-                    { id: 'enrich_email', method: 'GET', path: '/v1/enrich/email', desc: 'Enrich emails with first/last names and company metadata' },
-                    { id: 'verify_phone', method: 'GET', path: '/v1/verify/phone', desc: 'Validate international phone numbers & mock carrier' },
-                  ].map((ep) => (
-                    <div
-                      key={ep.id}
-                      onClick={() => setPgAction(ep.id)}
-                      style={{
-                        padding: '0.6rem',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-color)',
-                        backgroundColor: pgAction === ep.id ? 'rgba(6, 182, 212, 0.08)' : 'transparent',
-                        borderColor: pgAction === ep.id ? 'var(--secondary)' : 'var(--border-color)',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      className="endpoint-item"
-                    >
-                      <div className="flex-row" style={{ justifyContent: 'flex-start', gap: '0.5rem' }}>
-                        <span className={`badge ${ep.method === 'GET' ? 'badge-green' : 'badge-purple'}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', fontFamily: 'var(--font-mono)' }}>
-                          {ep.method}
-                        </span>
-                        <strong style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: pgAction === ep.id ? '#fff' : 'var(--text-secondary)' }}>
-                          {ep.path}
-                        </strong>
-                      </div>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', paddingLeft: '0.25rem' }}>
-                        {ep.desc}
-                      </p>
-                    </div>
-                  ))}
+          return (
+            <div>
+              <div className="flex-between mb-3" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h1>Developer API Reference</h1>
+                  <p>Explore and integrate the full suite of OmniGlass B2B intelligence, web scraping, and search engine SERP APIs.</p>
+                </div>
+                
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                      service: 'OmniGlass API Spec',
+                      version: 'v1.0.0',
+                      lastUpdated: new Date().toISOString().split('T')[0],
+                      endpoints
+                    }, null, 2));
+                    const downloadAnchor = document.createElement('a');
+                    downloadAnchor.setAttribute("href", dataStr);
+                    downloadAnchor.setAttribute("download", "omniglass_api_catalog.json");
+                    document.body.appendChild(downloadAnchor);
+                    downloadAnchor.click();
+                    downloadAnchor.remove();
+                  }}
+                  style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                >
+                  <Copy size={16} /> Export API Catalog JSON
+                </button>
+              </div>
+
+              {/* Filter and Search Bar */}
+              <div className="card mb-3" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flexGrow: 1, minWidth: '250px' }}>
+                    <input
+                      type="text"
+                      placeholder="Search endpoints by name, path, description..."
+                      value={docSearch}
+                      onChange={(e) => setDocSearch(e.target.value)}
+                      style={{ padding: '0.6rem 1rem' }}
+                    />
+                  </div>
+                  
+                  <div className="flex-row" style={{ gap: '0.5rem' }}>
+                    {(['all', 'b2b', 'scrape', 'search'] as const).map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setDocFilter(cat)}
+                        className={`btn ${docFilter === cat ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '20px' }}
+                      >
+                        {cat === 'all' && 'All Endpoints'}
+                        {cat === 'b2b' && 'B2B Verification'}
+                        {cat === 'scrape' && 'Scraping & Media'}
+                        {cat === 'search' && 'Search & Discovery'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Code Snippets Panel */}
-              <div className="card">
-                <div className="flex-between mb-2">
-                  <h3>Code Integration Snippets</h3>
+              <div className="grid-1-2">
+                {/* LEFT SIDEBAR: Endpoints catalog */}
+                <div className="card flex-col" style={{ height: 'fit-content', gap: '1rem', maxHeight: '720px' }}>
+                  <div className="flex-between">
+                    <h3 style={{ marginBottom: 0 }}>API Catalog ({filteredEndpoints.length})</h3>
+                    {catalogLoading && <Loader2 size={16} className="animate-spin" />}
+                  </div>
                   
-                  {/* Language Selector */}
-                  <div className="flex-row" style={{ gap: '0.25rem' }}>
-                    <button
-                      onClick={() => setDocLang('curl')}
-                      className={`btn ${docLang === 'curl' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px' }}
-                    >
-                      cURL
-                    </button>
-                    <button
-                      onClick={() => setDocLang('js')}
-                      className={`btn ${docLang === 'js' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px' }}
-                    >
-                      JavaScript
-                    </button>
-                    <button
-                      onClick={() => setDocLang('python')}
-                      className={`btn ${docLang === 'python' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px' }}
-                    >
-                      Python
-                    </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '600px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                    {filteredEndpoints.length === 0 ? (
+                      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No endpoints match your query.
+                      </div>
+                    ) : (
+                      filteredEndpoints.map((ep) => (
+                        <div
+                          key={ep.id}
+                          onClick={() => setPgAction(ep.id)}
+                          style={{
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: pgAction === ep.id ? 'rgba(6, 182, 212, 0.08)' : 'transparent',
+                            borderColor: pgAction === ep.id ? 'var(--secondary)' : 'var(--border-color)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          className="endpoint-item"
+                        >
+                          <div className="flex-between">
+                            <div className="flex-row" style={{ justifyContent: 'flex-start', gap: '0.4rem' }}>
+                              <span className={`badge ${ep.method === 'GET' ? 'badge-green' : 'badge-purple'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.35rem', fontFamily: 'var(--font-mono)' }}>
+                                {ep.method}
+                              </span>
+                              <strong style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: pgAction === ep.id ? '#fff' : 'var(--text-secondary)' }}>
+                                {ep.path}
+                              </strong>
+                            </div>
+                          </div>
+                          <h4 style={{ fontSize: '0.85rem', margin: '0.4rem 0 0.2rem 0', fontWeight: 600, color: pgAction === ep.id ? 'var(--secondary)' : 'var(--text-primary)' }}>
+                            {ep.name}
+                          </h4>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {ep.description}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
-                {/* Snippet display Box */}
-                <div className="code-block-container">
-                  <div className="code-header">
-                    <span>{docLang.toUpperCase()} - {pgAction.toUpperCase()} ENDPOINT</span>
-                    <button
-                      onClick={() => copyToClipboard(getDocCode(), false, true)}
-                      className="copy-btn"
-                    >
-                      {copiedCode ? <Check size={14} style={{ color: 'var(--success)' }} /> : <Copy size={14} />}
-                    </button>
-                  </div>
-                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{getDocCode()}</pre>
-                </div>
+                {/* RIGHT SIDEBAR: Selected Endpoint Details */}
+                {selectedEp && (
+                  <div className="card flex-col" style={{ gap: '1.5rem' }}>
+                    <div>
+                      <div className="flex-between mb-1">
+                        <span className="badge badge-blue">{selectedEp.group}</span>
+                        <div className="flex-row" style={{ gap: '0.5rem' }}>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${API_BASE}${selectedEp.path}`);
+                              alert('Path copied to clipboard!');
+                            }}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px' }}
+                          >
+                            Copy Path
+                          </button>
+                          
+                          <button
+                            className="btn btn-primary glowing-accent"
+                            onClick={() => {
+                              setPgAction(selectedEp.id);
+                              setActiveTab('playground');
+                            }}
+                            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', borderRadius: '4px', background: 'linear-gradient(135deg, var(--secondary), #0891b2)' }}
+                          >
+                            <Terminal size={12} /> Run in Playground
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <h2 style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className={`badge ${selectedEp.method === 'GET' ? 'badge-green' : 'badge-purple'}`} style={{ fontFamily: 'var(--font-mono)' }}>{selectedEp.method}</span>
+                        {selectedEp.name}
+                      </h2>
+                      <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', fontSize: '0.9rem' }}>{selectedEp.description}</p>
+                      <code style={{ display: 'block', backgroundColor: 'var(--bg-main)', padding: '0.6rem 0.8rem', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'var(--font-mono)', border: '1px solid var(--border-color)', marginTop: '0.75rem', color: '#fff' }}>
+                        {API_BASE}{selectedEp.path}
+                      </code>
+                    </div>
 
-                <div className="mt-3">
-                  <h4>Required Request Headers</h4>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginTop: '0.5rem', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                        <th style={{ padding: '0.5rem' }}>Header</th>
-                        <th style={{ padding: '0.5rem' }}>Type</th>
-                        <th style={{ padding: '0.5rem' }}>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
-                        <td style={{ padding: '0.5rem', fontFamily: 'var(--font-mono)' }}>X-API-Key</td>
-                        <td style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>String</td>
-                        <td style={{ padding: '0.5rem', color: 'var(--text-secondary)' }}>Your secret API key. Required.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                    {/* Pricing Tiers Matrix Grid */}
+                    <div>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 600, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem', marginBottom: '0.75rem' }}>
+                        Subscription Tier Limits
+                      </h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                        {(['BASIC', 'PRO', 'ULTRA'] as const).map((tier) => {
+                          const limitText = selectedEp.tierAccess[tier];
+                          const isLocked = limitText.toLowerCase().includes('block') || limitText.toLowerCase().includes('lock');
+                          const isLimited = limitText.toLowerCase().includes('check only') || limitText.toLowerCase().includes('max') || limitText.toLowerCase().includes('capped');
+                          
+                          return (
+                            <div 
+                              key={tier} 
+                              style={{ 
+                                padding: '0.6rem', 
+                                borderRadius: '6px', 
+                                backgroundColor: 'var(--bg-main)', 
+                                border: '1px solid var(--border-color)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.25rem'
+                              }}
+                            >
+                              <div className="flex-between">
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{tier}</span>
+                                <span className={`badge ${isLocked ? 'badge-red' : isLimited ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: '0.6rem', padding: '0.05rem 0.3rem' }}>
+                                  {isLocked ? 'Locked' : isLimited ? 'Limited' : 'Full Access'}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.3' }}>
+                                {limitText}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Request Parameters Spec */}
+                    <div>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 600, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem', marginBottom: '0.5rem' }}>
+                        Request Parameters ({selectedEp.parameters.length})
+                      </h4>
+                      {selectedEp.parameters.length === 0 ? (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No parameters required for this endpoint.</p>
+                      ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>Name</th>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>In</th>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>Type</th>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>Required</th>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>Default</th>
+                                <th style={{ padding: '0.4rem 0.5rem' }}>Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedEp.parameters.map((param) => (
+                                <tr key={param.name} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.02)' }}>
+                                  <td style={{ padding: '0.4rem 0.5rem', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--secondary)' }}>{param.name}</td>
+                                  <td style={{ padding: '0.4rem 0.5rem' }}>
+                                    <span className={`badge ${param.in === 'query' ? 'badge-blue' : 'badge-purple'}`} style={{ fontSize: '0.6rem', padding: '0.05rem 0.25rem' }}>
+                                      {param.in}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-secondary)' }}>{param.type}</td>
+                                  <td style={{ padding: '0.4rem 0.5rem' }}>
+                                    <span className={`badge ${param.required ? 'badge-red' : 'badge-green'}`} style={{ fontSize: '0.6rem', padding: '0.05rem 0.25rem' }}>
+                                      {param.required ? 'Yes' : 'No'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '0.4rem 0.5rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{param.default !== undefined ? String(param.default) : '-'}</td>
+                                  <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-secondary)' }}>{param.description}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Code Snippets & Response Carousels */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem' }}>
+                      
+                      <div>
+                        <div className="flex-between mb-1">
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Code Integration Snippet</h4>
+                          
+                          <div className="flex-row" style={{ gap: '0.2rem' }}>
+                            {(['curl', 'js', 'python'] as const).map((lang) => (
+                              <button
+                                key={lang}
+                                onClick={() => setDocLang(lang)}
+                                className={`btn ${docLang === lang ? 'btn-primary' : 'btn-secondary'}`}
+                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.7rem', borderRadius: '4px' }}
+                              >
+                                {lang === 'curl' ? 'cURL' : lang === 'js' ? 'JavaScript' : 'Python'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="code-block-container" style={{ maxHeight: '280px' }}>
+                          <div className="code-header">
+                            <span>{docLang.toUpperCase()} - {selectedEp.id.toUpperCase()}</span>
+                            <button
+                              onClick={() => copyToClipboard(getDocCode(), false, true)}
+                              className="copy-btn"
+                            >
+                              {copiedCode ? <Check size={14} style={{ color: 'var(--success)' }} /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.75rem' }}>{getDocCode()}</pre>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.4rem' }}>Expected JSON Response (Sample)</h4>
+                        <div className="code-block-container" style={{ maxHeight: '280px', backgroundColor: '#05070a' }}>
+                          <div className="code-header" style={{ paddingBottom: '0.4rem' }}>
+                            <span>JSON Response Schema</span>
+                            <button
+                              onClick={() => copyToClipboard(typeof selectedEp.sampleResponse === 'string' ? selectedEp.sampleResponse : JSON.stringify(selectedEp.sampleResponse, null, 2))}
+                              className="copy-btn"
+                            >
+                              <Copy size={14} />
+                            </button>
+                          </div>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.75rem', color: '#34d399' }}>
+                            {typeof selectedEp.sampleResponse === 'string' ? selectedEp.sampleResponse : JSON.stringify(selectedEp.sampleResponse, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ====================================================
             TAB: PRICING PLANS

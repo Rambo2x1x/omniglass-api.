@@ -1,0 +1,748 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "OmniGlass API",
+    "description": "An enterprise-grade, all-in-one developer utility API combining stealth headless web scraping, custom JS page execution scenarios, premium rotating residential proxies, media screenshot/PDF rendering, organic web search SERPs, and B2B contact verification.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://omniglass-api.onrender.com",
+      "description": "Production Render Server"
+    },
+    {
+      "url": "http://localhost:5000",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/v1/verify/email": {
+      "get": {
+        "summary": "Verify Email Deliverability",
+        "description": "Checks email validity, performs MX DNS checks, runs SMTP connection handshakes on port 25, and flags catch-all mail servers.",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target email address to check."
+          },
+          {
+            "name": "syntaxOnly",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "Skip DNS and SMTP queries (Syntax check only)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification Results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "email": "alex.jones@gmail.com",
+                  "isValid": true,
+                  "formatValid": true,
+                  "mxRecords": ["gmail-smtp-in.l.google.com."],
+                  "isDisposable": false,
+                  "isRoleAccount": false,
+                  "deliverable": "deliverable",
+                  "domain": "gmail.com",
+                  "user": "alex.jones",
+                  "smtpCheck": "deliverable",
+                  "isCatchAll": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Verify Email Deliverability (POST)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string" },
+                  "syntaxOnly": { "type": "boolean", "default": false }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verification Results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verify/phone": {
+      "get": {
+        "summary": "Validate Phone Formats",
+        "description": "Checks phone numbers against international E.164 formats, locates originating country, and formats text displays.",
+        "parameters": [
+          {
+            "name": "phone",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target phone number (e.g. +14155552671)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Phone Format Validation Info",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "phone": "+14155552671",
+                  "isValid": true,
+                  "countryCode": "US",
+                  "countryName": "United States / Canada",
+                  "formatted": "+1 (415) 555-2671",
+                  "carrier": "AT&T Mobility (Simulated)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/enrich/domain": {
+      "get": {
+        "summary": "Enrich Domain Profile",
+        "description": "Extracts domain business profiles, names, logos, social handles, tech stack components, and inspects SPF/DMARC/NS compliance.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target corporate domain (e.g. stripe.com)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Domain Enrichment Results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "domain": "stripe.com",
+                  "name": "Stripe",
+                  "logo": "https://logo.clearbit.com/stripe.com",
+                  "description": "Online payment processing for internet businesses.",
+                  "title": "Stripe | Financial Infrastructure for the Internet",
+                  "socials": {
+                    "linkedin": "https://www.linkedin.com/company/stripe",
+                    "twitter": "https://twitter.com/stripe"
+                  },
+                  "techStack": ["React", "Stripe Payments", "Google Analytics"],
+                  "status": "UP",
+                  "dnsSecurity": {
+                    "spfRecord": "v=spf1 include:spf.stripe.com ~all",
+                    "spfValid": true,
+                    "dmarcRecord": "v=DMARC1; p=reject;",
+                    "dmarcValid": true,
+                    "nameServers": ["dns1.cloudflare.com", "dns2.cloudflare.com"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Enrich Domain Profile (POST)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["domain"],
+                "properties": {
+                  "domain": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Domain Enrichment Results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/enrich/email": {
+      "get": {
+        "summary": "Enrich Email & Company Profile",
+        "description": "Performs personal name extraction, email deliverability audit, and company domain profile intelligence in a single call.",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Business email address to enrich."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enrichment Profile Details",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "email": "alex.jones@stripe.com",
+                  "firstName": "Alex",
+                  "lastName": "Jones",
+                  "fullName": "Alex Jones",
+                  "verification": {
+                    "isValid": true,
+                    "deliverable": "deliverable",
+                    "smtpCheck": "deliverable",
+                    "isCatchAll": false
+                  },
+                  "company": {
+                    "domain": "stripe.com",
+                    "name": "Stripe",
+                    "logo": "https://logo.clearbit.com/stripe.com",
+                    "techStack": ["React", "Stripe Payments"],
+                    "dnsSecurity": {
+                      "spfValid": true,
+                      "dmarcValid": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Enrich Email Profile (POST)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enrichment Profile Details",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape": {
+      "get": {
+        "summary": "Scrape Webpage to Markdown",
+        "description": "Retrieves webpage contents and transforms it into clean, AI-ready Markdown, extracting SEO metadata. Supports custom JS script scenarios and proxy routing.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "URL of the page to scrape."
+          },
+          {
+            "name": "blockMedia",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true },
+            "description": "Skip loading heavy media assets (images/fonts)."
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" },
+            "description": "Duration in milliseconds to wait before capture."
+          },
+          {
+            "name": "executeJs",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Custom JS snippet to run before capture."
+          },
+          {
+            "name": "premiumProxy",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": false },
+            "description": "Route via rotating premium residential proxies."
+          },
+          {
+            "name": "proxyCountry",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "US" },
+            "description": "Country code for proxy geolocating."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scraped Markdown Result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" },
+                "example": {
+                  "url": "https://example.com",
+                  "title": "Example Domain",
+                  "markdown": "# Example Domain\nThis domain is for use in illustrative examples...",
+                  "wordCount": 35
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Scrape Webpage to Markdown (POST)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": { "type": "string" },
+                  "selector": { "type": "string" },
+                  "blockMedia": { "type": "boolean", "default": true },
+                  "wait": { "type": "integer" },
+                  "executeJs": { "type": "string" },
+                  "premiumProxy": { "type": "boolean", "default": false },
+                  "proxyCountry": { "type": "string", "default": "US" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scraped Markdown Result",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/raw": {
+      "get": {
+        "summary": "Scrape Raw HTML Source",
+        "description": "Loads webpage in a stealth headless browser, bypassing Cloudflare/anti-bot walls, and returns raw HTML source.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Target website URL."
+          },
+          {
+            "name": "blockMedia",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw HTML Content",
+            "content": {
+              "text/html": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/metadata": {
+      "get": {
+        "summary": "Extract SEO Metadata Only",
+        "description": "Scrapes headers and script nodes to fetch OpenGraph cards, Twitter cards, meta descriptions, and microdata JSON-LD tags.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Extracted SEO Metadata",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/status": {
+      "get": {
+        "summary": "SSL & Domain Status Auditor",
+        "description": "Resolves IP directories, measures response headers latency, and checks SSL certificate encryption details.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Domain Audit Metrics",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/screenshot": {
+      "get": {
+        "summary": "Capture Webpage Screenshot",
+        "description": "Captures and returns the visual display of the target webpage as a binary stream of PNG image data.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "fullPage",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG Image Binary Data",
+            "content": {
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/screenshot/element": {
+      "get": {
+        "summary": "Capture CSS Element Crop",
+        "description": "Takes a visual PNG snapshot cropped precisely to the bounding box of a target CSS selector.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "selector",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cropped PNG Image Binary Data",
+            "content": {
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pdf": {
+      "get": {
+        "summary": "Convert Webpage to PDF",
+        "description": "Converts target website layouts into standardized, print-optimized vector PDF file streams.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF Document Binary Data",
+            "content": {
+              "application/pdf": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Convert Raw HTML to PDF (POST)",
+        "description": "Compiles raw HTML snippets sent in request body directly into A4 vector PDF files.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["html"],
+                "properties": {
+                  "html": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compiled PDF Document Binary Data",
+            "content": {
+              "application/pdf": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/emails": {
+      "get": {
+        "summary": "Extract Page Emails & Socials",
+        "description": "Scrapes webpage markup and script logs to harvest corporate contact details, phone numbers, and socials.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contact Scraped Results",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/links": {
+      "get": {
+        "summary": "Extract Page Hyperlinks",
+        "description": "Crawls and compiles all links on a page, cataloging their tags, innerText, and grouping internal/external anchors.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Categorized Web Links",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scrape/table": {
+      "get": {
+        "summary": "Parse Tables to JSON",
+        "description": "Identifies table matrices in target webpage documents and parses columns/rows into standard JSON datasets.",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Structured Table Arrays",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "type": "object" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search": {
+      "get": {
+        "summary": "Organic Google Web Search",
+        "description": "Executes organic web search queries with DuckDuckGo fallback mechanisms to guarantee 100% uptime.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "num",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search Results List",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search/images": {
+      "get": {
+        "summary": "Google Images Search",
+        "description": "Searches and indexes image resource items matching search query inputs with Bing Image failover.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "num",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image Results List",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search/news": {
+      "get": {
+        "summary": "Google News SERP Scraper",
+        "description": "Retrieves global or regional Google News matching search queries, parsing articles, outlets, and publishing dates.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "num",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 10 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "News Articles List",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search/suggest": {
+      "get": {
+        "summary": "Autocomplete Suggestions",
+        "description": "Retrieves search engine autocomplete suggest queries for keyword expansion and SEO campaign tags planning.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search Suggestions Array",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

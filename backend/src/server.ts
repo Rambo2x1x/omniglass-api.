@@ -32,6 +32,7 @@ import {
   ScreenshotOptions,
   PdfOptions
 } from './services/scraper';
+import { endpointsCatalog } from './services/endpointsCatalog';
 
 dotenv.config();
 
@@ -69,8 +70,44 @@ function parseScrapeOptions(req: Request): ScrapeOptions {
     options.selector = selectorVal as string;
   }
 
+  const executeJsVal = req.query.executeJs || req.body?.executeJs;
+  if (executeJsVal) {
+    options.executeJs = executeJsVal as string;
+  }
+
+  const premiumProxyVal = req.query.premiumProxy || req.body?.premiumProxy;
+  if (premiumProxyVal !== undefined) {
+    options.premiumProxy = premiumProxyVal === 'true' || premiumProxyVal === true;
+  }
+
+  const proxyCountryVal = req.query.proxyCountry || req.body?.proxyCountry;
+  if (proxyCountryVal) {
+    options.proxyCountry = proxyCountryVal as string;
+  }
+
   return options;
 }
+
+// ==========================================================
+// PUBLIC API CATALOG DIRECTORY ENDPOINTS (No Key Required)
+// ==========================================================
+
+app.get('/v1/endpoints', (req: Request, res: Response) => {
+  res.json({
+    service: 'OmniGlass API',
+    version: 'v1',
+    endpointsCount: endpointsCatalog.length,
+    endpoints: endpointsCatalog
+  });
+});
+
+app.get('/v1', (req: Request, res: Response) => {
+  res.json({
+    message: 'Welcome to the OmniGlass API. Query /v1/endpoints to see the full developer API catalog.',
+    catalogUrl: `${req.protocol}://${req.get('host')}/v1/endpoints`,
+    health: `${req.protocol}://${req.get('host')}/health`
+  });
+});
 
 // ==========================================================
 // PUBLIC B2B ENDPOINTS (Routed via RapidAPI or X-API-Key)
@@ -662,7 +699,7 @@ app.get('/v1/search/suggest', requireRapidApiSecret, async (req: Request, res: R
 // SAAS PORTAL DEVELOPER DASHBOARD ENDPOINTS
 // ==========================================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_omniscrape_key_123!';
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_omniglass_key_123!';
 
 // 1. User Registration
 app.post('/api/auth/register', async (req: Request, res: Response): Promise<void> => {
@@ -944,9 +981,9 @@ function getChartData(usages: any[]) {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'leadglass-api', timestamp: new Date() });
+  res.json({ status: 'ok', service: 'omniglass-api', timestamp: new Date() });
 });
 
 app.listen(PORT, () => {
-  console.log(`LeadGlass B2B & Scraping API backend server is running on http://localhost:${PORT}`);
+  console.log(`OmniGlass B2B & Scraping API backend server is running on http://localhost:${PORT}`);
 });

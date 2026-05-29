@@ -122,14 +122,14 @@ export function checkSmtpMailbox(mxHost: string, email: string): Promise<boolean
 
       if (stage === 0) {
         if (statusCode >= 200 && statusCode < 300) {
-          socket.write('HELO leadglass.io\r\n');
+          socket.write('HELO omniglass.io\r\n');
           stage = 1;
         } else {
           cleanupAndResolve('unknown');
         }
       } else if (stage === 1) {
         if (statusCode >= 200 && statusCode < 300) {
-          socket.write('MAIL FROM:<verifier@leadglass.io>\r\n');
+          socket.write('MAIL FROM:<verifier@omniglass.io>\r\n');
           stage = 2;
         } else {
           cleanupAndResolve('unknown');
@@ -254,7 +254,7 @@ export async function verifyEmailDeliverability(email: string, syntaxOnly = fals
         smtpCheck = 'deliverable';
         
         // Run catch-all check with a randomized address to see if it accepts any address
-        const randomString = `leadglass_catchall_test_${Math.floor(Math.random() * 100000)}`;
+        const randomString = `omniglass_catchall_test_${Math.floor(Math.random() * 100000)}`;
         const testCatchAllEmail = `${randomString}@${domain}`;
         const catchAllOk = await checkSmtpMailbox(primaryMx, testCatchAllEmail);
         if (catchAllOk === true) {
@@ -421,7 +421,7 @@ export async function profileDomain(domain: string): Promise<DomainProfileResult
   const url = `https://${cleanDomain}`;
   const startTime = Date.now();
 
-  console.log(`[LeadGlass] Profiling domain: ${cleanDomain}`);
+  console.log(`[OmniGlass] Profiling domain: ${cleanDomain}`);
   
   let html = '';
   let status: 'UP' | 'DOWN' = 'UP';
@@ -452,7 +452,7 @@ export async function profileDomain(domain: string): Promise<DomainProfileResult
       html = await response.text();
     }
   } catch (err) {
-    console.log(`[LeadGlass] HTTP fetch failed for ${cleanDomain}. Using headless browser pipeline...`);
+    console.log(`[OmniGlass] HTTP fetch failed for ${cleanDomain}. Using headless browser pipeline...`);
   }
 
   // 2. Headless Chromium fallback if fast fetch fails or returns empty HTML
@@ -477,7 +477,7 @@ export async function profileDomain(domain: string): Promise<DomainProfileResult
       html = await page.content();
       await page.close();
     } catch (browserErr) {
-      console.error(`[LeadGlass] Browser rendering pipeline failed for ${cleanDomain}:`, browserErr);
+      console.error(`[OmniGlass] Browser rendering pipeline failed for ${cleanDomain}:`, browserErr);
       status = 'DOWN';
     }
   }
@@ -586,7 +586,7 @@ export async function enrichEmailAddress(email: string): Promise<EmailEnrichment
         };
       }
     } catch (e) {
-      console.error(`[LeadGlass] Failed to auto-enrich email domain ${verification.domain}:`, e);
+      console.error(`[OmniGlass] Failed to auto-enrich email domain ${verification.domain}:`, e);
     }
   }
 

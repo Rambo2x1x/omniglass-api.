@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../services/db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_omniscrape_key_123!';
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_omniglass_key_123!';
 
 /**
  * Middleware to verify JSON Web Tokens (JWT) for dashboard direct user requests.

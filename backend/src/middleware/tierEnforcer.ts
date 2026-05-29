@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * Express middleware to enforce plan-specific limits for LeadGlass B2B & Scraping API.
+ * Express middleware to enforce plan-specific limits for OmniGlass B2B & Scraping API.
  */
 export function enforceTierLimits(req: Request, res: Response, next: NextFunction): void {
   const subscription = (req.header('X-RapidAPI-Subscription') || 'BASIC').toUpperCase();
@@ -9,8 +9,8 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
 
   console.log(`[TierEnforcer] Request path: ${path}, Subscription Tier: ${subscription}`);
 
-  // Skip checks for dashboard administration endpoints
-  if (path.startsWith('/api/') || path === '/health') {
+  // Skip checks for dashboard administration and public catalog endpoints
+  if (path.startsWith('/api/') || path === '/health' || path === '/v1/endpoints' || path === '/v1') {
     return next();
   }
 
@@ -82,6 +82,27 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       return;
     }
 
+    // Block Custom JS Execution in BASIC
+    const executeJs = req.query.executeJs || req.body?.executeJs;
+    if (executeJs) {
+      res.status(403).json({
+        error: 'Feature Locked',
+        message: 'Custom JavaScript page execution is a premium feature. Please upgrade to the ULTRA plan to run custom scenarios.'
+      });
+      return;
+    }
+
+    // Block Premium Rotating Proxies in BASIC
+    const premiumProxy = req.query.premiumProxy === 'true' || req.query.premiumProxy === '1' || req.body?.premiumProxy === true;
+    const proxyCountry = req.query.proxyCountry || req.body?.proxyCountry;
+    if (premiumProxy || proxyCountry) {
+      res.status(403).json({
+        error: 'Feature Locked',
+        message: 'Stealth rotating premium residential proxies are premium features. Please upgrade to the ULTRA plan to route traffic.'
+      });
+      return;
+    }
+
     // 8. Enforce simple syntax checking only on verify email
     if (path.startsWith('/v1/verify/email')) {
       req.query.syntaxOnly = 'true';
@@ -137,6 +158,27 @@ export function enforceTierLimits(req: Request, res: Response, next: NextFunctio
       res.status(403).json({
         error: 'Feature Locked',
         message: 'B2B Lead Generation Contact scraping is locked on the PRO plan. Please upgrade to the ULTRA plan to unlock email/social data extraction.'
+      });
+      return;
+    }
+
+    // Block Custom JS Execution in PRO
+    const executeJs = req.query.executeJs || req.body?.executeJs;
+    if (executeJs) {
+      res.status(403).json({
+        error: 'Feature Locked',
+        message: 'Custom JavaScript page execution is locked on the PRO plan. Please upgrade to the ULTRA plan to run custom scenarios.'
+      });
+      return;
+    }
+
+    // Block Premium Rotating Proxies in PRO
+    const premiumProxy = req.query.premiumProxy === 'true' || req.query.premiumProxy === '1' || req.body?.premiumProxy === true;
+    const proxyCountry = req.query.proxyCountry || req.body?.proxyCountry;
+    if (premiumProxy || proxyCountry) {
+      res.status(403).json({
+        error: 'Feature Locked',
+        message: 'Stealth rotating premium residential proxies are locked on the PRO plan. Please upgrade to the ULTRA plan to route traffic.'
       });
       return;
     }
