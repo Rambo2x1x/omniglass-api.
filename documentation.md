@@ -19,18 +19,20 @@ All API requests must pass through the RapidAPI proxy. You must supply your uniq
 
 Our backend automatically enforces plan-specific tier limitations:
 
-| Feature / Limit | BASIC (Free) | PRO | ULTRA / MEGA |
-|---|---|---|---|
-| **Markdown Scrape (`/v1/scrape`)** | Unlocked (No selector) | Unlocked (Selector enabled) | Unlocked (Selector enabled) |
-| **Raw HTML Scraper (`/v1/scrape/raw`)**| ❌ Locked | Unlocked | Unlocked |
-| **PDF Renderer (`/v1/pdf`)** | ❌ Locked | Unlocked | Unlocked |
-| **Element Screenshot (`/v1/screenshot/element`)** | ❌ Locked | Unlocked | Unlocked |
-| **Domain Enrichment (`/v1/enrich/domain`)**| ❌ Locked | Unlocked | Unlocked |
-| **Email Enrichment (`/v1/enrich/email`)** | ❌ Locked | ❌ Locked | Unlocked |
-| **Lead Gen (`/v1/scrape/emails`)** | ❌ Locked | ❌ Locked | Unlocked |
-| **Stealth Proxies & JS Execution** | ❌ Locked | ❌ Locked | Unlocked |
-| **Max Web/News/Image Search** | Max 3 results | Max 10 results | Max 50 results |
-| **Max Render Wait Time (`wait`)** | Max 1,000ms | Max 5,000ms | Max 15,000ms |
+| Feature / Limit | BASIC (Free) | PRO ($4.99) | ULTRA ($14.99) | MEGA ($29.99) |
+|---|---|---|---|---|
+| **Organic SERP Search Results** | ✅ Enabled (Max 3) | ✅ Enabled (Max 10) | ✅ Enabled (Max 50) | ✅ Enabled (Max 50) |
+| **Email Deliverability Verification** | ✅ Syntax Only | ✅ Full Verification | ✅ Full Verification | ✅ Full Verification |
+| **Screenshot & PDF Rendering** | ❌ Locked | ✅ Unlocked | ✅ Unlocked | ✅ Unlocked |
+| **Raw HTML Scraping** | ❌ Locked | ✅ Unlocked | ✅ Unlocked | ✅ Unlocked |
+| **Web Scraping (Selectors)** | ❌ Locked | ✅ Unlocked | ✅ Unlocked | ✅ Unlocked |
+| **Domain Profile Enrichment** | ❌ Locked | ✅ Unlocked | ✅ Unlocked | ✅ Unlocked |
+| **Custom JS Script Execution** | ❌ Locked | ❌ Locked | ✅ Unlocked | ✅ Unlocked |
+| **Premium Rotating Proxies** | ❌ Locked | ❌ Locked | ✅ Unlocked | ✅ Unlocked |
+| **Contact Lead Extractor** | ❌ Locked | ❌ Locked | ✅ Unlocked | ✅ Unlocked |
+| **B2B Email Enrichment** | ❌ Locked | ❌ Locked | ✅ Unlocked | ✅ Unlocked |
+| **Max Render Wait Time (`wait`)** | Max 1,000ms | Max 5,000ms | Max 15,000ms | Max 15,000ms |
+| **Monthly Request Quota** | 150 / Month | 3,000 / Month | 15,000 / Month | 60,000 / Month |
 
 ---
 
